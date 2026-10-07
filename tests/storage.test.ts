@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { applyAttempt, emptyProgress } from "@/lib/quiz";
 import { clearProgress, loadProgress, saveProgress, STORAGE_KEY, type StorageLike } from "@/lib/storage";
 
 function memoryStorage(): StorageLike & { data: Map<string, string> } {
+  // Separate from createMemoryStorage so tests can inspect the raw map.
   const data = new Map<string, string>();
   return {
     data,
@@ -79,5 +80,26 @@ describe("storage", () => {
     const loaded = loadProgress(() => store);
     expect(loaded.questionResults).toEqual({ "naming-2": { correct: false, answeredAt: 5 } });
     expect(loaded.bestByConcept).toEqual({ naming: { correct: 1, total: 5 } });
+  });
+});
+
+describe("browserStorage", () => {
+  it("falls back to in-memory storage when window.localStorage throws on access", async () => {
+    vi.resetModules();
+    const fakeWindow = {
+      get localStorage(): Storage {
+        throw new DOMException("denied", "SecurityError");
+      },
+      dispatchEvent: () => true,
+    };
+    vi.stubGlobal("window", fakeWindow);
+    try {
+      const storage = await import("@/lib/storage");
+      expect(storage.saveProgress(sample)).toBe(true); // persisted to the memory fallback
+      expect(storage.loadProgress()).toEqual(sample);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.resetModules();
+    }
   });
 });

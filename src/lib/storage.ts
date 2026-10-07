@@ -12,13 +12,36 @@ export type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 export type StorageProvider = () => StorageLike | undefined;
 
-/** Reading window.localStorage itself can throw (e.g. SecurityError), so it is wrapped too. */
+/** In-memory stand-in used when localStorage is blocked, so a session still works end to end. */
+export function createMemoryStorage(): StorageLike {
+  const data = new Map<string, string>();
+  return {
+    getItem: (key) => data.get(key) ?? null,
+    setItem: (key, value) => void data.set(key, value),
+    removeItem: (key) => void data.delete(key),
+  };
+}
+
+let resolvedBrowserStorage: StorageLike | undefined;
+
+/**
+ * window.localStorage when it is usable, otherwise an in-memory fallback (private mode,
+ * disabled cookies, quota 0). Accessing window.localStorage can itself throw, so it is probed
+ * inside try/catch. Returns undefined on the server.
+ */
 export const browserStorage: StorageProvider = () => {
+  if (typeof window === "undefined") return undefined;
+  if (resolvedBrowserStorage) return resolvedBrowserStorage;
   try {
-    return typeof window === "undefined" ? undefined : window.localStorage;
+    const ls = window.localStorage;
+    const probe = "__quiz_probe__";
+    ls.setItem(probe, probe);
+    ls.removeItem(probe);
+    resolvedBrowserStorage = ls;
   } catch {
-    return undefined;
+    resolvedBrowserStorage = createMemoryStorage();
   }
+  return resolvedBrowserStorage;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -49,14 +72,50 @@ function parseProgress(raw: string): Progress | null {
   return progress;
 }
 
-export function loadProgress(provider: StorageProvider = browserStorage): Progress {
+/** Raw serialized progress (or null). Strings compare by value, so this is a stable snapshot. */
+export function readRawProgress(provider: StorageProvider = browserStorage): string | null {
   try {
-    const raw = provider()?.getItem(STORAGE_KEY);
-    if (!raw) return emptyProgress();
+    return provider()?.getItem(STORAGE_KEY) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function parseRawProgress(raw: string | null): Progress {
+  if (!raw) return emptyProgress();
+  try {
     return parseProgress(raw) ?? emptyProgress();
   } catch {
     return emptyProgress();
   }
+}
+
+const CHANGE_EVENT = "quiz-progress-change";
+
+function notifyChange(): void {
+  try {
+    if (typeof window !== "undefined") window.dispatchEvent(new Event(CHANGE_EVENT));
+  } catch {
+    // Notifications are best-effort.
+  }
+}
+
+/** Subscribes to progress changes from this tab and other tabs. Safe to call during SSR. */
+export function subscribeProgress(onChange: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === null || e.key === STORAGE_KEY) onChange();
+  };
+  window.addEventListener("storage", onStorage);
+  window.addEventListener(CHANGE_EVENT, onChange);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener(CHANGE_EVENT, onChange);
+  };
+}
+
+export function loadProgress(provider: StorageProvider = browserStorage): Progress {
+  return parseRawProgress(readRawProgress(provider));
 }
 
 /** Returns true when the progress was persisted. */
@@ -65,6 +124,7 @@ export function saveProgress(progress: Progress, provider: StorageProvider = bro
     const storage = provider();
     if (!storage) return false;
     storage.setItem(STORAGE_KEY, JSON.stringify(progress));
+    notifyChange();
     return true;
   } catch {
     return false;
@@ -76,6 +136,7 @@ export function clearProgress(provider: StorageProvider = browserStorage): boole
     const storage = provider();
     if (!storage) return false;
     storage.removeItem(STORAGE_KEY);
+    notifyChange();
     return true;
   } catch {
     return false;
