@@ -10,6 +10,10 @@ export default function Home() {
           {questions.length} multiple-choice questions across {CONCEPTS.length} concepts: code reading, judgment calls
           and fundamentals. Options are reshuffled every attempt. Progress is saved in this browser only.
         </p>
+        <p className="mt-2 max-w-2xl text-muted">
+          Each concept also has a study guide: why it matters, how it&apos;s used, an ELI5 explanation, related topics
+          and common interview questions.
+        </p>
       </header>
       <HomeDashboard />
     </main>

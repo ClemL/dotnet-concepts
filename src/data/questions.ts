@@ -86,7 +86,7 @@ export const CONCEPTS: readonly ConceptInfo[] = [
   { id: "hosting-resilience", title: "Hosting and resilience", summary: "BackgroundService, PeriodicTimer, Polly v8", core: false },
 ];
 
-const LEARN = "https://learn.microsoft.com/en-us";
+export const LEARN = "https://learn.microsoft.com/en-us";
 
 export const questions: Question[] = [
   // ───────────────────────────── 1. Naming ─────────────────────────────
