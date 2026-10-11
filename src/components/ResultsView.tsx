@@ -66,7 +66,9 @@ export default function ResultsView({ highlighted }: { highlighted: Record<strin
           {perConcept.map(({ concept, score }) => (
             <li key={concept} className="rounded-lg border border-border bg-surface p-3">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <span className="font-medium">{conceptTitle(concept)}</span>
+                <Link href={`/concepts/${concept}`} className={textLink}>
+                  {conceptTitle(concept)}
+                </Link>
                 <span className="text-sm text-muted">
                   {score.correct}/{score.total} · {score.percent}%
                 </span>
@@ -116,13 +118,16 @@ export default function ResultsView({ highlighted }: { highlighted: Record<strin
                   <p className="mt-3">
                     <RichText text={q.explanation} />
                   </p>
-                  {q.docsUrl && (
-                    <p className="mt-2">
+                  <p className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
+                    <Link href={`/concepts/${q.concept}`} className={textLink}>
+                      Study guide: {conceptTitle(q.concept)}
+                    </Link>
+                    {q.docsUrl && (
                       <a href={q.docsUrl} target="_blank" rel="noopener noreferrer" className={textLink}>
                         Read the docs on Microsoft Learn<span className="sr-only"> (opens in a new tab)</span>
                       </a>
-                    </p>
-                  )}
+                    )}
+                  </p>
                 </li>
               );
             })}

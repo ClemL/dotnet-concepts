@@ -91,25 +91,27 @@ function ConceptSection({
           const score = b ? toScore(b.correct, b.total) : null;
           const n = CONCEPTS.findIndex((x) => x.id === c.id) + 1;
           return (
-            <li key={c.id}>
-              <Link
-                href={`/quiz/${c.id}`}
-                className="flex h-full flex-col gap-2 rounded-xl border border-border bg-surface p-4 hover:border-accent"
-                aria-describedby={`${c.id}-best`}
-              >
-                <span className="text-sm text-muted">{String(n).padStart(2, "0")}</span>
-                <span className="font-semibold">{c.title}</span>
-                <span className="text-sm text-muted">{c.summary}</span>
-                <span id={`${c.id}-best`} className="mt-auto pt-2 text-sm">
-                  {!hydrated ? (
-                    <span className="text-muted">Best: …</span>
-                  ) : score ? (
-                    <BestBadge percent={score.percent} correct={score.correct} total={score.total} />
-                  ) : (
-                    <span className="text-muted">Not attempted</span>
-                  )}
-                </span>
-              </Link>
+            <li key={c.id} className="flex h-full flex-col gap-2 rounded-xl border border-border bg-surface p-4">
+              <span className="text-sm text-muted">{String(n).padStart(2, "0")}</span>
+              <h3 className="font-semibold">{c.title}</h3>
+              <span className="text-sm text-muted">{c.summary}</span>
+              <span id={`${c.id}-best`} className="mt-auto pt-2 text-sm">
+                {!hydrated ? (
+                  <span className="text-muted">Best: …</span>
+                ) : score ? (
+                  <BestBadge percent={score.percent} correct={score.correct} total={score.total} />
+                ) : (
+                  <span className="text-muted">Not attempted</span>
+                )}
+              </span>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <Link href={`/concepts/${c.id}`} className={`${buttonSecondary} text-sm`}>
+                  Study<span className="sr-only"> {c.title}</span>
+                </Link>
+                <Link href={`/quiz/${c.id}`} className={`${buttonSecondary} text-sm`} aria-describedby={`${c.id}-best`}>
+                  Quiz<span className="sr-only"> on {c.title}</span>
+                </Link>
+              </div>
             </li>
           );
         })}
