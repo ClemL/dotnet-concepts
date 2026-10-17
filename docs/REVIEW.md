@@ -29,3 +29,15 @@ A ninth question (`nullable-reference-types-3`) was flagged by the automated sen
 - `docsUrl` is set only for learn.microsoft.com pages whose paths I am confident exist. 70 of the 110 questions have one; the rest omit it.
 - Code snippets assume normal surrounding context (implicit usings, an `app`/`builder`/`db` in scope where clearly implied). Snippets that mix top-level statements and type declarations put the statements first, as C# requires.
 - The correct option position is skewed toward A in the source data. This does not affect quiz-takers, because options are reshuffled on every attempt.
+
+## Concepts 23–26
+
+Twenty questions were later added for four concepts: dependency injection, configuration and Options, EF Core and Dapper on Azure SQL, and money, rounding, and dates. They were written to avoid repeating ground the earlier concepts already cover: captive dependencies (`static-singleton`), keyed services and `IOptionsMonitor` (`design-patterns`), `TimeProvider` (`shims`), and `IQueryable` and `Any` vs `Count` (`linq`).
+
+Every code snippet in these questions and their study guides was compiled against the .NET 8 SDK (8.0.131), with EF Core 8, Dapper, Azure.Identity, and the Key Vault configuration provider. Stub types were used for anything a snippet or caption marks as assumed. Snippets with a definite output were run, and the output matched the correct option or the `// comments`:
+
+- **Run and matched:** `dependency-injection-1` to `-3`, `configuration-1` to `-3` (with real `appsettings` files and environment variables), `data-access-1` (SQLite), `money-dates-1` to `-3`, and the guide examples for configuration and money and dates.
+- **Verified indirectly:** `data-access-2` cannot run without SQL Server. The same behavior was reproduced with a custom retrying `ExecutionStrategy` on SQLite: `SaveChangesAsync` threw `InvalidOperationException` ("does not support user-initiated transactions"). The `decimal(18,2)` default in `money-dates-5` was read from the SQL Server provider's model.
+- **Compiled only:** `data-access-3` (the compiler's EF1002 analyzer flags query 1, which agrees with the answer), `data-access-5`, and the EF Core and Dapper guide examples. SQLite completes queries synchronously, so it cannot reproduce the concurrent-operation exception in `data-access-5`; the question says the detection is best-effort for that reason.
+
+The `docsUrl` links for these concepts could not be fetched from the authoring environment, so they rely on the same "confident the page exists" rule as the original set.

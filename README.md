@@ -1,6 +1,6 @@
 # C#/.NET Concepts Quiz
 
-A multiple-choice quiz with 110 questions across 22 C#/.NET concepts. The first 12 concepts form the core syllabus (60 questions); the other 10 are additional concepts (50 questions). Every concept also has a study page covering why it matters, how it is used, an ELI5 explanation, related topics, and common interview questions. It has no backend, database, or authentication. The questions and study guides live in typed data files, and progress is stored in the browser's `localStorage`.
+A multiple-choice quiz with 130 questions across 26 C#/.NET concepts. The first 12 concepts form the core syllabus (60 questions); the other 14 are additional concepts (70 questions). Every concept also has a study page covering why it matters, how it is used, an ELI5 explanation, related topics, and common interview questions. It has no backend, database, or authentication. The questions and study guides live in typed data files, and progress is stored in the browser's `localStorage`.
 
 **Stack:** Next.js 16 (App Router, static generation) · TypeScript (strict) · Tailwind CSS v4 · shiki (server-side syntax highlighting) · Vitest · pnpm
 
@@ -18,10 +18,12 @@ A multiple-choice quiz with 110 questions across 22 C#/.NET concepts. The first 
 | 8 | Static vs singleton | 20 | Collections |
 | 9 | Shims | 21 | Architecture patterns (CQRS, Outbox, Decorator, Repository, Vertical Slice) |
 | 10 | Extension methods | 22 | Hosting and resilience (BackgroundService, PeriodicTimer, Polly v8) |
-| 11 | Base Class Library | | |
-| 12 | .NET design patterns | | |
+| 11 | Base Class Library | 23 | Dependency injection (registration rules, TryAdd, forwarding, disposal ownership, validation) |
+| 12 | .NET design patterns | 24 | Configuration and Options (source precedence, environment variables, ValidateOnStart, Key Vault) |
+| | | 25 | EF Core and Dapper on Azure SQL (tracking, execution strategies, SQL injection, bulk loads) |
+| | | 26 | Money, rounding, and dates (decimal vs double, MidpointRounding, DateTimeOffset, DateOnly) |
 
-The home page offers **Core 12 quiz (60)**, **Full quiz (110)**, **Review missed**, and, for each concept, a **Study** page and a 5-question **Quiz**.
+The home page offers **Core 12 quiz (60)**, **Full quiz (130)**, **Review missed**, and, for each concept, a **Study** page and a 5-question **Quiz**.
 
 ### Study pages
 
@@ -157,7 +159,7 @@ Guides live in `src/data/guides.ts`, one `ConceptGuide` per concept. Prose field
 - **Interview questions:** five per concept, each with a `level` (1 basic, 2 intermediate, 3 advanced) and a 2–4 sentence model answer.
 - The same accuracy rules as questions apply: no unverifiable version numbers, limits, or performance figures.
 
-When the guides were written, every example was compiled against the .NET 10 SDK (10.0.112), with stub types for anything the caption marks as assumed. Examples with top-level statements were also run, and their output matched the `// comments`. The Microsoft Fakes example was compiled against stub `ShimsContext` and `ShimDateTime` types, because Fakes requires Visual Studio Enterprise. This check is not part of `pnpm test`.
+When the guides were written, every example was compiled against the .NET 10 SDK (10.0.112), with stub types for anything the caption marks as assumed. Examples with top-level statements were also run, and their output matched the `// comments`. The examples for concepts 23–26 were compiled against the .NET 8 SDK (8.0.131), with EF Core 8, Dapper, and Azure.Identity, and the same stub approach. The Microsoft Fakes example was compiled against stub `ShimsContext` and `ShimDateTime` types, because Fakes requires Visual Studio Enterprise. This check is not part of `pnpm test`.
 
 ## Question review
 
