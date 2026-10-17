@@ -2018,6 +2018,450 @@ ResiliencePipeline pipeline = new ResiliencePipelineBuilder()
     ],
     docsUrl: `${LEARN}/dotnet/core/extensions/workers`,
   },
+
+  // ───────────────────────────── 23. Dependency injection ─────────────────────────────
+  "dependency-injection": {
+    definition:
+      "Dependency injection (DI) supplies an object's dependencies from outside, usually through its constructor. In .NET, `Microsoft.Extensions.DependencyInjection` is the built-in container: you register services in an `IServiceCollection`, and an `IServiceProvider` constructs them with the lifetime each registration specifies.",
+    why: [
+      "Registration mistakes fail at runtime, not at compile time: a missing service throws on first resolution, and an extra `Add` call silently changes which implementation a single-service resolution returns.",
+      "Lifetime belongs to a registration, not to a class, so registering one class for two interfaces creates two singletons with separate state.",
+      "The container disposes what it creates, so disposable transients resolved from the root provider stay alive until the app shuts down.",
+      "Constructor injection makes dependencies visible and replaceable, which is what lets unit tests substitute fakes.",
+    ],
+    usage: [
+      "Constructor injection in application code; resolving from `IServiceProvider` only in composition code such as factory registrations and the scopes a hosted service creates.",
+      "`TryAdd*` calls inside a library's `AddXyz()` extension method, so an application's own registration takes precedence, and `TryAddEnumerable` for plug-in style lists of implementations.",
+      "Forwarding registrations (`sp => sp.GetRequiredService<ClaimStore>()`) when one instance must serve several interfaces.",
+      "Decorators registered with a factory that wraps the inner implementation, or with a library such as Scrutor.",
+      "`ValidateOnBuild` and `ValidateScopes` enabled outside Development too, or an integration test that builds the host, so registration errors fail in CI instead of in production.",
+    ],
+    examples: [
+      {
+        caption:
+          "A library registration method that yields to application overrides and forwards one instance to two interfaces. The interfaces and classes are assumed to be defined elsewhere.",
+        code: `using Microsoft.Extensions.DependencyInjection.Extensions;
+
+public static class ClaimsServiceCollectionExtensions
+{
+    public static IServiceCollection AddClaimsCore(
+        this IServiceCollection services)
+    {
+        // TryAdd: an app that registered its own IClock keeps it
+        services.TryAddSingleton<IClock, SystemClock>();
+
+        // One ClaimStore instance behind two interfaces
+        services.TryAddSingleton<ClaimStore>();
+        services.TryAddSingleton<IClaimReader>(
+            sp => sp.GetRequiredService<ClaimStore>());
+        services.TryAddSingleton<IClaimWriter>(
+            sp => sp.GetRequiredService<ClaimStore>());
+
+        // Plug-ins: each validator is added once, even if this runs twice
+        services.TryAddEnumerable(
+            ServiceDescriptor.Transient<IClaimValidator, NdcValidator>());
+        return services;
+    }
+}`,
+      },
+      {
+        caption:
+          "A caching decorator registered by hand, and container validation turned on in every environment. `builder` and the repository types are assumed.",
+        code: `using Microsoft.Extensions.Caching.Memory;
+
+builder.Services.AddMemoryCache();
+builder.Services.AddScoped<SqlPriceRepository>();
+builder.Services.AddScoped<IPriceRepository>(sp =>
+    new CachedPriceRepository(
+        sp.GetRequiredService<SqlPriceRepository>(),
+        sp.GetRequiredService<IMemoryCache>()));
+
+builder.Host.UseDefaultServiceProvider(o =>
+{
+    o.ValidateScopes = true;   // no scoped services captured by singletons
+    o.ValidateOnBuild = true;  // every registration can be constructed
+});`,
+      },
+    ],
+    eli5: [
+      "Imagine a restaurant kitchen. A cook doesn't grow vegetables or forge pans; they ask for what they need, and the kitchen manager hands it over. The manager is the DI container, and the list of who supplies what is the registration.",
+      "The manager follows strict rules. If two suppliers are listed for tomatoes, the one written last is used, unless the second entry says \"only if nobody else is listed\". A shared mixer is shared only if it is written down once; write it down twice and you get two mixers. And the manager cleans up only the equipment they bought, not the pans a cook brought from home.",
+    ],
+    related: [
+      { concept: "static-singleton", why: "Lifetimes and captive dependencies, the most common DI failure, are covered there." },
+      { concept: "design-patterns", why: "Keyed services, the Options pattern, and `IHttpClientFactory` all build on the container." },
+      { concept: "configuration", why: "Options classes are registered, bound, and validated through the container." },
+      { concept: "disposal", why: "The container disposes the `IDisposable` services it creates when their scope ends." },
+      { concept: "hosting-resilience", why: "Hosted services are resolved from the root provider and need their own scopes for scoped services." },
+      { topic: "Scrutor", why: "A popular library that adds assembly scanning and `Decorate` to the built-in container." },
+      { topic: "Service locator anti-pattern", why: "Resolving dependencies from `IServiceProvider` inside business code hides them from constructors and tests." },
+    ],
+    interview: [
+      {
+        level: 1,
+        question: "What is the difference between `AddSingleton`, `TryAddSingleton`, and `TryAddEnumerable`?",
+        answer:
+          "`AddSingleton` always appends a registration; when several exist, resolving one service returns the last, and `IEnumerable<T>` returns all of them in registration order. `TryAddSingleton` does nothing if the service type is already registered, which lets a library's defaults yield to the application's own registration. `TryAddEnumerable` skips only an identical service-and-implementation pair, so different implementations can coexist without duplicates.",
+      },
+      {
+        level: 2,
+        question: "How does the container choose a constructor when a class has several?",
+        answer:
+          "It selects the constructor with the most parameters that it can resolve from the container. If another constructor can also be satisfied and its parameters are not a subset of the chosen one's, the choice is ambiguous and the container throws. In practice, give injectable classes a single public constructor, which is easier to read and avoids the question entirely.",
+      },
+      {
+        level: 2,
+        question: "Who disposes services resolved from the container, and when?",
+        answer:
+          "The container disposes the `IDisposable` and `IAsyncDisposable` services it created: scoped and transient services when their scope is disposed, and singletons when the root provider is disposed at shutdown. Instances you construct yourself and register with `AddSingleton(instance)` are never disposed by the container. Disposable transients resolved from the root provider are held until shutdown, so resolve them from a scope instead.",
+      },
+      {
+        level: 2,
+        question: "What is the service locator anti-pattern, and when is resolving from `IServiceProvider` acceptable?",
+        answer:
+          "Service locator means business code asks a provider for its dependencies, so they no longer appear in constructors, tests cannot tell what to fake, and missing registrations surface only at runtime. Resolving from `IServiceProvider` is acceptable in infrastructure code: factory registrations, scopes created by hosted services, and framework integration points. The rule of thumb is to resolve at the composition boundary and inject everywhere else.",
+      },
+      {
+        level: 3,
+        question: "How do you implement a decorator with the built-in container, which has no `Decorate` method?",
+        answer:
+          "Register the inner implementation under its concrete type, then register the interface with a factory that resolves the inner type and wraps it, for example `sp => new CachedPriceRepository(sp.GetRequiredService<SqlPriceRepository>(), ...)`. `ActivatorUtilities.CreateInstance` can build the decorator while the container fills its remaining constructor parameters. Libraries such as Scrutor automate this with `Decorate<TService, TDecorator>()`; either way, give the decorator a lifetime no longer than the inner service's.",
+      },
+    ],
+    docsUrl: `${LEARN}/dotnet/core/extensions/dependency-injection`,
+  },
+
+  // ───────────────────────────── 24. Configuration and Options ─────────────────────────────
+  configuration: {
+    definition:
+      "Configuration in .NET is a set of key-value pairs merged from layered sources, such as JSON files, environment variables, user secrets, Azure Key Vault, and command-line arguments, with `:` separating sections. The Options pattern binds a section to a strongly typed class and adds validation and change tracking.",
+    why: [
+      "Source order decides which value wins, so a forgotten environment variable or Key Vault secret can silently override `appsettings.json` in production.",
+      "Merging happens per key, not per section or array, which produces surprising results when an environment file overrides part of an array.",
+      "Unvalidated options fail late, on the first request that reads them, instead of when the deployment starts.",
+      "Secrets in `appsettings.json` end up in source control; user secrets, Key Vault, and managed identities keep them out.",
+    ],
+    usage: [
+      "One options class per section, registered with `AddOptions<T>().BindConfiguration(\"Section\").ValidateDataAnnotations().ValidateOnStart()`.",
+      "Environment variables with `__` as the section separator (`Sftp__Host`) for containers and App Service application settings.",
+      "User secrets (`dotnet user-secrets set`) for local development; they load only in the Development environment.",
+      "Azure Key Vault as a configuration provider, with secret names that use `--` for `:`, authenticated through `DefaultAzureCredential` or a managed identity.",
+      "`GetConnectionString(\"Name\")`, which reads `ConnectionStrings:Name`, and passwordless Azure SQL connection strings that use `Authentication=Active Directory Default`.",
+    ],
+    examples: [
+      {
+        caption: "A validated options class bound at startup, so a misconfigured deployment fails fast. `builder` is the `WebApplicationBuilder`.",
+        code: `using System.ComponentModel.DataAnnotations;
+
+builder.Services.AddOptions<SftpOptions>()
+    .BindConfiguration(SftpOptions.Section)
+    .ValidateDataAnnotations()
+    .Validate(o => o.Port != 21, "Port 21 is FTP, not SFTP")
+    .ValidateOnStart();
+
+public sealed class SftpOptions
+{
+    public const string Section = "Sftp";
+
+    [Required] public string Host { get; set; } = "";
+    [Range(1, 65535)] public int Port { get; set; } = 22;
+    [Required] public string RemoteFolder { get; set; } = "/outbound";
+}`,
+      },
+      {
+        caption:
+          "Loading Key Vault secrets with a managed identity in Azure and developer sign-in locally. Requires the Azure.Extensions.AspNetCore.Configuration.Secrets and Azure.Identity packages.",
+        code: `using Azure.Identity;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Already loaded: appsettings.json, appsettings.{env}.json,
+// user secrets (Development), environment variables, command line.
+var vaultUri = builder.Configuration["KeyVault:Uri"];
+if (!string.IsNullOrEmpty(vaultUri))
+{
+    // Added last, so secrets override every earlier source.
+    // Secret "ConnectionStrings--ClaimsDb" becomes key
+    // "ConnectionStrings:ClaimsDb".
+    builder.Configuration.AddAzureKeyVault(
+        new Uri(vaultUri), new DefaultAzureCredential());
+}
+
+var claimsDb = builder.Configuration.GetConnectionString("ClaimsDb");`,
+      },
+    ],
+    eli5: [
+      "Configuration is a stack of sticky notes on the fridge. The bottom note says \"dinner at 6\". Someone sticks a note on top that says \"dinner at 7\", and that is the one everyone reads. Each source is a layer, and the top layer wins.",
+      "The tricky part is that each note covers only the lines it writes on. If the bottom note lists three chores and the top note lists one, chores two and three still peek out underneath. Options validation is a parent checking the fridge before anyone leaves the house, not after dinner is already late.",
+    ],
+    related: [
+      { concept: "design-patterns", why: "Compares `IOptions<T>`, `IOptionsSnapshot<T>`, and `IOptionsMonitor<T>`, and when each updates." },
+      { concept: "dependency-injection", why: "Options are registered and resolved through the container." },
+      { concept: "nullable-reference-types", why: "Options classes give non-nullable strings a default such as `\"\"`, because binding happens after construction where the compiler cannot see it." },
+      { concept: "data-access", why: "Connection strings and retry settings for Azure SQL come from configuration." },
+      { topic: "Managed identities for Azure resources", why: "Let App Service, Functions, and VMs get tokens for Key Vault, Storage, and Azure SQL without stored secrets." },
+      { topic: "Azure App Configuration", why: "A central store for settings and feature flags shared across apps, with its own configuration provider." },
+      { topic: "Secret Manager (user secrets)", why: "Stores development secrets outside the project folder so they never reach source control." },
+    ],
+    interview: [
+      {
+        level: 1,
+        question: "In what order does `WebApplication.CreateBuilder` load configuration, and which source wins?",
+        answer:
+          "It loads `appsettings.json`, then `appsettings.{Environment}.json`, then user secrets in the Development environment, then environment variables, then command-line arguments. Later sources override earlier ones key by key, so command-line arguments win and the base JSON file has the lowest priority. Providers you add afterward, such as Azure Key Vault, override all of them.",
+      },
+      {
+        level: 1,
+        question: "How do you keep secrets out of `appsettings.json`?",
+        answer:
+          "Locally, use the Secret Manager (`dotnet user-secrets`), which stores values in the user profile and loads them only in Development. In Azure, use application settings or Key Vault, and prefer managed identities so that services such as Key Vault, Storage, and Azure SQL need no secret at all. Also scan repositories for leaked secrets, because deleting one in a later commit does not remove it from history.",
+      },
+      {
+        level: 2,
+        question: "How is a nested key such as `Sftp:Host` written as an environment variable, and why?",
+        answer:
+          "As `Sftp__Host`: the environment-variable provider replaces a double underscore with `:`, because colons are not allowed in environment variable names on every platform. The same form works in App Service application settings, `docker run -e` flags, and Kubernetes manifests. Key Vault uses a different convention, `Sftp--Host`, because secret names cannot contain underscores.",
+      },
+      {
+        level: 2,
+        question: "Why use `ValidateOnStart`, and what kinds of validation are available?",
+        answer:
+          "Without it, options are validated lazily the first time `.Value` is read, so a misconfigured deployment looks healthy until a request reaches the code that needs the settings. `ValidateOnStart` runs validation while the host starts, turning configuration errors into failed deployments. Validation can use data annotations, inline `Validate(predicate, message)` calls, or an `IValidateOptions<T>` class for rules that need other services.",
+      },
+      {
+        level: 3,
+        question: "How do arrays in configuration merge across sources, and how do you avoid surprises?",
+        answer:
+          "Arrays are flattened into indexed keys such as `Hosts:0` and `Hosts:1`, and merging happens per key. An override that supplies fewer elements replaces only those indexes, so trailing elements from the base file survive. Avoid defining the same array in more than one source, use objects keyed by name instead of arrays, or bind a single delimited string and split it yourself.",
+      },
+    ],
+    docsUrl: `${LEARN}/dotnet/core/extensions/configuration`,
+  },
+
+  // ───────────────────────────── 25. EF Core and Dapper on Azure SQL ─────────────────────────────
+  "data-access": {
+    definition:
+      "EF Core is Microsoft's object-relational mapper: it translates LINQ to SQL, tracks changes to loaded entities, and manages schema migrations. Dapper is a lightweight micro-ORM that maps the results of SQL you write to objects; both run on ADO.NET, which for SQL Server and Azure SQL means `Microsoft.Data.SqlClient`.",
+    why: [
+      "Azure SQL has transient faults by design, such as failovers during maintenance and throttling, so code without a retry strategy fails intermittently in production.",
+      "Change tracking makes updates convenient but costs memory and CPU on read-heavy reporting queries, and untracked entities silently ignore `SaveChanges`.",
+      "String-built SQL is the classic injection hole, and data from vendor files is untrusted input like any other.",
+      "Bulk loads, set-based updates, and wide reports need different tools than single-entity CRUD; the wrong choice can turn a minutes-long job into hours.",
+    ],
+    usage: [
+      "`AsNoTracking()` plus `Select` projections for read-only queries and reports.",
+      "`ExecuteUpdateAsync` and `ExecuteDeleteAsync` (EF Core 7 and later) for set-based changes without loading entities.",
+      "`EnableRetryOnFailure()` on the SQL Server provider, with explicit transactions wrapped in `CreateExecutionStrategy().ExecuteAsync`.",
+      "Dapper for hand-tuned reporting SQL and stored procedures, always with parameters; `WHERE Ndc IN @Ndcs` expands a list into one parameter per element.",
+      "`SqlBulkCopy` or table-valued parameters to load large files into staging tables, followed by a set-based `MERGE` or `INSERT ... SELECT`.",
+      "One `DbContext` per unit of work (scoped, in ASP.NET Core), and `IDbContextFactory<T>` for parallel or background work.",
+    ],
+    examples: [
+      {
+        caption:
+          "A read-only projection, a set-based update, and a retried transaction with EF Core. `db` (a `ClaimsDb` context), its entities, `ClaimSummary`, and the local variables are assumed.",
+        code: `// Read-only projection: no tracking, only the needed columns
+var summaries = await db.Claims
+    .AsNoTracking()
+    .Where(c => c.FillDate >= from)
+    .Select(c => new ClaimSummary(c.Id, c.Ndc, c.PaidAmount))
+    .ToListAsync(ct);
+
+// Set-based update: one UPDATE statement, no entities loaded
+var reversed = await db.Claims
+    .Where(c => c.BatchId == batchId)
+    .ExecuteUpdateAsync(
+        s => s.SetProperty(c => c.Status, ClaimStatus.Reversed), ct);
+
+// A user transaction must run inside the execution strategy
+var strategy = db.Database.CreateExecutionStrategy();
+await strategy.ExecuteAsync(async () =>
+{
+    await using var tx = await db.Database.BeginTransactionAsync(ct);
+    db.Adjustments.Add(adjustment);
+    await db.SaveChangesAsync(ct);
+    await tx.CommitAsync(ct);
+});`,
+      },
+      {
+        caption:
+          "Dapper with parameters and list expansion, then a streamed bulk load with `SqlBulkCopy`. `connectionString`, `ndcs`, `reader` (an `IDataReader` over the vendor file), and `ClaimRow` are assumed.",
+        code: `using Dapper;
+using Microsoft.Data.SqlClient;
+
+await using var conn = new SqlConnection(connectionString);
+
+// Parameters, never string interpolation. IN @Ndcs expands the list.
+var rows = await conn.QueryAsync<ClaimRow>(
+    "SELECT Id, Ndc, PaidAmount FROM dbo.Claims WHERE Ndc IN @Ndcs",
+    new { Ndcs = ndcs });
+
+// Bulk load into a staging table, streaming from an IDataReader
+await conn.OpenAsync();
+using var bulk = new SqlBulkCopy(conn)
+{
+    DestinationTableName = "staging.VendorClaims",
+    BatchSize = 10_000,
+    EnableStreaming = true,
+    BulkCopyTimeout = 0, // no time limit for large nightly loads
+};
+await bulk.WriteToServerAsync(reader);`,
+      },
+    ],
+    eli5: [
+      "EF Core is a helpful librarian. You describe the books you want, they fetch them, and they keep a notebook of every book you borrowed so they can tell what you scribbled in when you hand it back. Dapper is the self-service desk: you fill in the exact request slip yourself and get exactly those books, with no notebook.",
+      "If you tell the librarian \"I'm only looking\", they skip the notebook, which is faster, but they won't notice if you write in a book. That is `AsNoTracking`. And if you need to shelve two million books, you don't hand them over one at a time; you back a truck up to the loading dock. That is `SqlBulkCopy`.",
+    ],
+    related: [
+      { concept: "linq", why: "`IQueryable<T>` translation, deferred execution, and the N+1 query problem." },
+      { concept: "delegates", why: "EF Core needs `Expression<Func<...>>`, not `Func<...>`, to translate a filter to SQL." },
+      { concept: "hosting-resilience", why: "Retry principles, and creating a fresh `DbContext` per iteration in background workers." },
+      { concept: "dependency-injection", why: "`AddDbContext` registers a scoped context, and `AddDbContextFactory` supports parallel work." },
+      { concept: "money-dates", why: "Decimal precision and date types must match the SQL column types." },
+      { concept: "architecture", why: "Repository, Outbox, and CQRS read models are built on these tools." },
+      { topic: "Table-valued parameters", why: "Send a set of rows to a stored procedure or query as a single parameter." },
+      { topic: "Microsoft.Data.SqlClient", why: "The current SQL Server driver; the older System.Data.SqlClient package is deprecated." },
+    ],
+    interview: [
+      {
+        level: 1,
+        question: "When would you choose Dapper over EF Core, and can they be used together?",
+        answer:
+          "EF Core suits domain-centric CRUD, where change tracking, migrations, and composable LINQ save effort. Dapper suits hand-written reporting SQL, stored procedures, and hot paths where you want full control over the statement. They coexist well because both use ADO.NET connections; a common split is EF Core for writes and Dapper for complex reads.",
+      },
+      {
+        level: 2,
+        question: "What does `AsNoTracking` change, and when should you use it?",
+        answer:
+          "The change tracker does not record the returned entities, which reduces memory and CPU for large result sets, and `SaveChanges` ignores later edits to them. Use it for read-only queries, reports, and API responses, or set `QueryTrackingBehavior.NoTracking` as the default for a read-heavy context. Projections into non-entity types with `Select` are never tracked, so they get the same benefit.",
+      },
+      {
+        level: 2,
+        question: "How do you handle transient faults with Azure SQL in EF Core?",
+        answer:
+          "Enable the SQL Server retrying execution strategy with `EnableRetryOnFailure()`, which retries operations that fail with known transient error numbers. Explicit transactions must run inside `CreateExecutionStrategy().ExecuteAsync`, so the whole unit can be retried. If the connection drops during a commit, the outcome is unknown, so design the operation to be idempotent or verify whether the commit succeeded before retrying.",
+      },
+      {
+        level: 2,
+        question: "What do `ExecuteUpdate` and `ExecuteDelete` do, and what do they bypass?",
+        answer:
+          "They translate a LINQ query into a single SQL `UPDATE` or `DELETE` and run it immediately, without loading any entities. Because they bypass the change tracker, entities already loaded in the context are not updated, and logic in `SaveChanges` overrides, such as setting audit fields, does not run. They also execute immediately rather than at `SaveChanges`, so use an explicit transaction when they must commit together with other changes.",
+      },
+      {
+        level: 3,
+        question: "What is cartesian explosion, and how does `AsSplitQuery` address it?",
+        answer:
+          "Including two or more collection navigations in one query produces a SQL `JOIN` whose row count is the product of the collection sizes, so parent data is duplicated many times over. `AsSplitQuery` loads each included collection with a separate SQL query instead, which removes the duplication. The trade-offs are extra round trips and, without a snapshot or serializable transaction, the chance that data changes between the queries.",
+      },
+    ],
+    docsUrl: `${LEARN}/ef/core/performance/efficient-querying`,
+  },
+
+  // ───────────────────────────── 26. Money, rounding, and dates ─────────────────────────────
+  "money-dates": {
+    definition:
+      "Money and time hide traps in everyday value types: `double` cannot represent most decimal fractions exactly, `Math.Round` rounds halves to even by default, and `DateTime` mixes instants, local times, and calendar dates in one type. .NET provides `decimal`, explicit `MidpointRounding`, `DateTimeOffset`, `DateOnly`, and `TimeZoneInfo` to model each case correctly.",
+    why: [
+      "Binary floating point turns cents into approximations, and the errors accumulate across millions of claim lines into totals that fail reconciliation.",
+      "Rounding rules differ between tools: .NET defaults to banker's rounding, while T-SQL `ROUND` and Excel round halves away from zero, so the same data can produce totals a cent apart.",
+      "A date stored as midnight UTC is the previous evening in US time zones, so reports grouped by local date shift rows into the wrong day.",
+      "Azure servers commonly run on UTC while developer laptops run on local time, so code that relies on `DateTime.Now` behaves differently in each place.",
+    ],
+    usage: [
+      "`decimal` for money, prices, and rates; `double` for measurements and statistics, where tiny relative errors are acceptable.",
+      "An explicit `MidpointRounding` on every financial `Math.Round` call, with rounding at an agreed step (per line or on the total) that matches the contract or downstream system.",
+      "`DateTimeOffset`, or `DateTime` with a strict UTC convention, for instants such as timestamps and audit fields; `DateOnly` for calendar dates such as fill dates and dates of service.",
+      "`TimeZoneInfo.ConvertTime` with IANA IDs such as `America/New_York`, which .NET 6 and later accept on Windows as well as Linux, when displaying or grouping by local time.",
+      "Explicit precision on every EF Core `decimal` column, for example `HasPrecision(18, 6)` for unit costs.",
+      "Half-open ranges (`>= start && < end`) for date filters instead of `<= 23:59:59`, and an injected `TimeProvider` for anything that reads the current time.",
+    ],
+    examples: [
+      {
+        caption: "Exact decimal arithmetic, explicit rounding rules, and a cent-exact allocation. The comments show the output.",
+        code: `Console.WriteLine(0.1 + 0.2 == 0.3);       // False
+Console.WriteLine(0.1m + 0.2m == 0.3m);    // True
+
+// Math.Round defaults to MidpointRounding.ToEven (banker's rounding)
+Console.WriteLine(Math.Round(2.345m, 2));  // 2.34
+Console.WriteLine(Math.Round(
+    2.345m, 2, MidpointRounding.AwayFromZero)); // 2.35, like T-SQL ROUND
+
+// Split 100.00 across three lines without losing a cent
+decimal total = 100.00m;
+decimal share = Math.Round(total / 3, 2, MidpointRounding.ToZero);
+decimal last = total - share * 2;
+Console.WriteLine($"{share} {share} {last}"); // 33.33 33.33 33.34`,
+      },
+      {
+        caption: "Choosing date types for a claim, converting an instant to Eastern time, and filtering with a half-open range. The comments show the output.",
+        code: `var claim = new Claim(
+    FillDate: new DateOnly(2026, 7, 1),
+    IngestedAt: DateTimeOffset.UtcNow,
+    UnitCost: 0.012345m);
+
+// IANA ID; .NET 6 and later also accept it on Windows
+var eastern = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+var utc = new DateTimeOffset(2026, 7, 1, 16, 0, 0, TimeSpan.Zero);
+var local = TimeZoneInfo.ConvertTime(utc, eastern);
+// 2026-07-01 12:00 -04:00 (EDT)
+Console.WriteLine(local.ToString("yyyy-MM-dd HH:mm zzz"));
+
+// Every claim filled in June: start inclusive, end exclusive
+var from = new DateOnly(2026, 6, 1);
+var to = from.AddMonths(1);
+Console.WriteLine(claim.FillDate >= from && claim.FillDate < to); // False
+
+public sealed record Claim(
+    DateOnly FillDate, DateTimeOffset IngestedAt, decimal UnitCost);`,
+      },
+    ],
+    eli5: [
+      "Imagine measuring tenths of an inch with a ruler that is marked only in eighths. You always land a hair off. `double` measures money that way; `decimal` is a ruler marked in tenths, so cents land exactly on a mark.",
+      "Dates are like birthdays and train departures. Your birthday is the same date wherever you travel, so it needs only a date (`DateOnly`). A train leaves at one exact moment, which is 9:00 in Boston and 6:00 in Los Angeles at the same time, so it needs a time and an offset (`DateTimeOffset`). Mixing the two up is how a birthday ends up celebrated a day early.",
+    ],
+    related: [
+      { concept: "shims", why: "`TimeProvider` and `FakeTimeProvider` make code that reads the clock testable." },
+      { concept: "equality", why: "`DateTime` equality ignores `Kind`, while `DateTimeOffset` equality compares instants." },
+      { concept: "class-struct", why: "`decimal`, `DateTime`, `DateOnly`, and `DateTimeOffset` are all value types." },
+      { concept: "data-access", why: "EF Core column precision and date mappings decide what is actually stored." },
+      { topic: "IEEE 754 floating point", why: "The binary format behind `float` and `double`, and the reason 0.1 has no exact representation." },
+      { topic: "NodaTime", why: "A third-party date and time library with separate types for instants, local dates, and zoned times." },
+      { topic: "ISO 8601", why: "The standard text format for dates and times, such as `2026-07-01T16:00:00Z`, used by `System.Text.Json`." },
+    ],
+    interview: [
+      {
+        level: 1,
+        question: "Why use `decimal` rather than `double` for currency?",
+        answer:
+          "`decimal` stores a base-10 integer with a scale, so values such as 0.10 are exact and adding cents does not drift. `double` is binary floating point, so most decimal fractions are approximations, and the errors show up in equality checks and accumulated totals. The trade-offs are that `decimal` is slower and has a smaller range, which rarely matters for financial data.",
+      },
+      {
+        level: 2,
+        question: "What rounding does `Math.Round` use by default, and why might totals disagree with SQL Server or Excel?",
+        answer:
+          "`Math.Round` defaults to `MidpointRounding.ToEven`, which rounds a value exactly halfway to the nearest even digit, so 2.5 becomes 2. T-SQL `ROUND` and Excel's `ROUND` round halves away from zero, so the same inputs can differ by one unit in the last place. Specify `MidpointRounding` explicitly in financial code, and agree on where rounding happens (per line or on the total) with every system you reconcile against.",
+      },
+      {
+        level: 2,
+        question: "When do you use `DateTime`, `DateTimeOffset`, and `DateOnly`?",
+        answer:
+          "Use `DateTimeOffset`, or `DateTime` with a strict UTC convention, for instants such as timestamps and audit fields, because the value records exactly when something happened. Use `DateOnly` for calendar dates with no time zone, such as birth dates, fill dates, and dates of service. `DateTime` values with `Kind` set to `Local` or `Unspecified` cause most date bugs, because the value does not say which clock it came from.",
+      },
+      {
+        level: 2,
+        question: "How do you handle data and users in different time zones?",
+        answer:
+          "Store instants in UTC or as `DateTimeOffset`, and convert to a local zone only at the edges: for display, or for business rules such as \"same day\". Use `TimeZoneInfo` with explicit zone IDs rather than the server's local zone, and handle daylight saving transitions, where some local times are skipped (`IsInvalidTime`) and others occur twice (`IsAmbiguousTime`). For future local appointments, store the zone ID too, because a zone's rules can change after the data is saved.",
+      },
+      {
+        level: 3,
+        question: "How would you implement and test a rule such as \"a claim is eligible within 30 days of the fill date\"?",
+        answer:
+          "First decide whether the window counts calendar days or elapsed time; for calendar days, use `DateOnly` arithmetic such as `fillDate.AddDays(30)`, which daylight saving changes cannot affect. Get today's date from an injected `TimeProvider`, converted to the business time zone, rather than from `DateTime.Now`. Then test the boundaries with `FakeTimeProvider`: days 29, 30, and 31, month ends, and dates around daylight saving changes.",
+      },
+    ],
+    docsUrl: `${LEARN}/dotnet/standard/datetime/choosing-between-datetime`,
+  },
 };
 
 /** The study guide for a concept. Every concept has one; the `Record` type enforces it at compile time. */
