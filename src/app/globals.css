@@ -1,42 +1,24 @@
 @import "tailwindcss";
 
-/* WCAG AA checked pairs: fg/muted/accent/success/danger on bg and surface, in both schemes. */
+/* Terminal theme, dark only. WCAG AA checked pairs: fg/muted/accent/success/danger on bg, surface and surface-2,
+   success/danger on their -bg tints, and accent-fg on accent. */
 :root {
-  --bg: #f8fafc;
-  --surface: #ffffff;
-  --surface-2: #f1f5f9;
-  --fg: #0f172a;
-  --muted: #475569;
-  --border: #cbd5e1;
-  --accent: #1d4ed8;
-  --accent-fg: #ffffff;
-  --accent-soft: #dbeafe;
-  --success: #15803d;
-  --success-bg: #f0fdf4;
-  --danger: #b91c1c;
-  --danger-bg: #fef2f2;
-  --focus: #1d4ed8;
-  color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0b1120;
-    --surface: #111827;
-    --surface-2: #1e293b;
-    --fg: #e5e7eb;
-    --muted: #9ca3af;
-    --border: #334155;
-    --accent: #93c5fd;
-    --accent-fg: #0b1120;
-    --accent-soft: #1e3a5f;
-    --success: #4ade80;
-    --success-bg: #052e16;
-    --danger: #f87171;
-    --danger-bg: #450a0a;
-    --focus: #93c5fd;
-    color-scheme: dark;
-  }
+  --bg: #0d1014;
+  --surface: #141920;
+  --surface-2: #1b222b;
+  --fg: #e6eaf0;
+  --muted: #9aa5b4;
+  --border: #283140;
+  --border-strong: #3a4554;
+  --accent: #f2b544;
+  --accent-fg: #0d1014;
+  --accent-soft: #3a2f14;
+  --success: #6dd79a;
+  --success-bg: #12261c;
+  --danger: #ff8a80;
+  --danger-bg: #2a1517;
+  --focus: #6ccfe0;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -46,6 +28,7 @@
   --color-fg: var(--fg);
   --color-muted: var(--muted);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-accent: var(--accent);
   --color-accent-fg: var(--accent-fg);
   --color-accent-soft: var(--accent-soft);
@@ -53,8 +36,8 @@
   --color-success-bg: var(--success-bg);
   --color-danger: var(--danger);
   --color-danger-bg: var(--danger-bg);
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, "Cascadia Code", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "Cascadia Code", "SFMono-Regular", Menlo, Consolas, monospace;
 }
 
 body {
@@ -63,31 +46,32 @@ body {
   font-family: var(--font-sans);
 }
 
+/* JetBrains Mono turns sequences such as == and >= into ligatures; code must show the characters as typed. */
+.font-mono,
+code,
+kbd,
+pre {
+  font-variant-ligatures: none;
+}
+
 :focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
   border-radius: 4px;
 }
 
-/* Shiki dual-theme output: light colors inline, dark colors in --shiki-dark vars. */
+/* Shiki output uses the github-dark-default theme; the panel takes the page background. */
 .code-block pre.shiki {
   margin: 0;
   padding: 1rem;
   overflow-x: auto;
   border-radius: 0.5rem;
   border: 1px solid var(--border);
+  background-color: var(--bg) !important;
   font-family: var(--font-mono);
   font-size: 0.8125rem;
   line-height: 1.6;
   tab-size: 4;
-}
-
-@media (prefers-color-scheme: dark) {
-  .code-block .shiki,
-  .code-block .shiki span {
-    color: var(--shiki-dark) !important;
-    background-color: var(--shiki-dark-bg) !important;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
