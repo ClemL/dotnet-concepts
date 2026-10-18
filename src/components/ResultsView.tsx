@@ -6,7 +6,7 @@ import { aggregateByConcept, modeLabel, scoreAnswers, selectMissed } from "@/lib
 import { loadProgress } from "@/lib/storage";
 import { CodeBlock } from "./CodeBlock";
 import { RichText } from "./RichText";
-import { buttonPrimary, buttonSecondary, textLink } from "./ui";
+import { buttonPrimary, buttonSecondary, scoreTone, textLink } from "./ui";
 
 const byId = new Map(questions.map((q) => [q.id, q]));
 const conceptTitle = (id: string) => CONCEPTS.find((c) => c.id === id)?.title ?? id;
@@ -18,10 +18,11 @@ export default function ResultsView({ highlighted }: { highlighted: Record<strin
 
   if (!attempt || attempt.answers.length === 0) {
     return (
-      <div className="rounded-xl border border-border bg-surface p-6">
-        <h1 className="text-xl font-semibold">No results yet</h1>
+      <div>
+        <p className="eyebrow">{"// results.log"}</p>
+        <h1 className="mt-2 text-xl font-semibold">No results yet</h1>
         <p className="mt-2 text-muted">Finish a quiz to see your results here.</p>
-        <Link href="/" className={`${buttonPrimary} mt-4`}>
+        <Link href="/" className={`${buttonPrimary} mt-5`}>
           Choose a quiz
         </Link>
       </div>
@@ -33,23 +34,30 @@ export default function ResultsView({ highlighted }: { highlighted: Record<strin
   const perConcept = aggregateByConcept(answers);
   const missed = answers.filter((a) => !a.correct);
   const totalMissedNow = selectMissed(questions, progress).length;
+  const finished = new Date(attempt.finishedAt);
 
   return (
     <div>
-      <p className="text-sm font-medium text-muted">{modeLabel(attempt.mode)} · Results</p>
-      <h1 className="mt-1 text-3xl font-bold">
-        {overall.percent}%{" "}
-        <span className="text-lg font-medium text-muted">
-          ({overall.correct} of {overall.total} correct)
+      <p className="eyebrow">
+        {"// results.log · "}{modeLabel(attempt.mode).toLowerCase()} ·{" "}
+        {finished.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+      </p>
+      <h1 className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <span className={`font-mono text-4xl font-semibold tabular-nums ${scoreTone(overall.percent)}`}>
+          {overall.percent}%
+        </span>
+        <span className="font-mono text-base text-muted">
+          <span className="text-success">{overall.correct} passed</span> ·{" "}
+          <span className={missed.length ? "text-danger" : ""}>{missed.length} failed</span> · {overall.total} total
         </span>
       </h1>
 
       <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
         <Link href={`/quiz/${attempt.mode}`} className={buttonPrimary}>
-          Retake {modeLabel(attempt.mode)}
+          Run again
         </Link>
         {totalMissedNow > 0 && (
-          <Link href="/quiz/missed" className={buttonSecondary}>
+          <Link href="/quiz/missed" className={`${buttonSecondary} border-danger text-danger`}>
             Review missed ({totalMissedNow})
           </Link>
         )}
@@ -59,67 +67,70 @@ export default function ResultsView({ highlighted }: { highlighted: Record<strin
       </div>
 
       <section aria-labelledby="breakdown-heading" className="mt-10">
-        <h2 id="breakdown-heading" className="text-lg font-semibold">
-          By concept
+        <h2 id="breakdown-heading" className="eyebrow">
+          ## By concept
         </h2>
-        <ul className="mt-4 flex flex-col gap-2">
+        <ul className="mt-3 overflow-hidden rounded-lg border border-border font-mono text-[0.8125rem]">
           {perConcept.map(({ concept, score }) => (
-            <li key={concept} className="rounded-lg border border-border bg-surface p-3">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <span className="font-medium">{conceptTitle(concept)}</span>
-                <span className="text-sm text-muted">
-                  {score.correct}/{score.total} · {score.percent}%
-                </span>
-              </div>
-              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-surface-2" aria-hidden="true">
-                <div
-                  className={`h-full rounded-full ${score.percent >= 80 ? "bg-success" : score.percent >= 50 ? "bg-accent" : "bg-danger"}`}
+            <li
+              key={concept}
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 border-b border-border bg-surface px-4 py-2.5 last:border-b-0 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_auto]"
+            >
+              <span className="truncate text-fg">{concept}.cs</span>
+              <span className="col-span-2 row-start-2 h-1.5 overflow-hidden rounded bg-border sm:col-span-1 sm:row-start-1 sm:col-start-2" aria-hidden="true">
+                <span
+                  className={`block h-full ${score.percent >= 80 ? "bg-success" : score.percent < 50 ? "bg-danger" : "bg-accent"}`}
                   style={{ width: `${score.percent}%` }}
                 />
-              </div>
+              </span>
+              <span className={`text-right tabular-nums ${scoreTone(score.percent)}`}>
+                {score.correct}/{score.total} · {score.percent}%
+              </span>
             </li>
           ))}
         </ul>
       </section>
 
       <section aria-labelledby="missed-heading" className="mt-10">
-        <h2 id="missed-heading" className="text-lg font-semibold">
-          Missed questions ({missed.length})
+        <h2 id="missed-heading" className="eyebrow">
+          ## Failed ({missed.length})
         </h2>
         {missed.length === 0 ? (
-          <p className="mt-2 text-muted">None — every answer was correct.</p>
+          <p className="mt-3 font-mono text-sm text-success">✓ All answers passed.</p>
         ) : (
-          <ol className="mt-4 flex flex-col gap-4">
+          <ol className="mt-3 flex flex-col gap-4">
             {missed.map((a) => {
               const q = byId.get(a.questionId)!;
               return (
-                <li key={q.id} className="min-w-0 rounded-xl border border-border bg-surface p-4 sm:p-6">
-                  <p className="text-xs font-medium text-muted">{conceptTitle(q.concept)}</p>
+                <li key={q.id} className="min-w-0 rounded-lg border border-border bg-surface p-4 sm:p-5">
+                  <p className="font-mono text-xs text-muted">
+                    {q.concept}.cs · {conceptTitle(q.concept)}
+                  </p>
                   <h3 className="mt-1 font-semibold">
                     <RichText text={q.prompt} />
                   </h3>
                   {highlighted[q.id] && <CodeBlock html={highlighted[q.id]} />}
-                  <dl className="mt-3 grid gap-2 text-sm">
-                    <div>
-                      <dt className="font-semibold text-danger">✗ Your answer</dt>
-                      <dd className="break-words">
+                  <dl className="mt-3 grid gap-2.5 text-sm">
+                    <div className="rounded-md border border-danger bg-danger-bg px-3 py-2">
+                      <dt className="font-mono text-xs font-medium text-danger">✗ your answer</dt>
+                      <dd className="mt-0.5 break-words">
                         <RichText text={q.options[a.selectedIndex] ?? "—"} />
                       </dd>
                     </div>
-                    <div>
-                      <dt className="font-semibold text-success">✓ Correct answer</dt>
-                      <dd className="break-words">
+                    <div className="rounded-md border border-success bg-success-bg px-3 py-2">
+                      <dt className="font-mono text-xs font-medium text-success">✓ expected</dt>
+                      <dd className="mt-0.5 break-words">
                         <RichText text={q.options[q.correctIndex]} />
                       </dd>
                     </div>
                   </dl>
-                  <p className="mt-3">
+                  <p className="mt-3 leading-relaxed">
                     <RichText text={q.explanation} />
                   </p>
                   {q.docsUrl && (
                     <p className="mt-2">
                       <a href={q.docsUrl} target="_blank" rel="noopener noreferrer" className={textLink}>
-                        Read the docs on Microsoft Learn<span className="sr-only"> (opens in a new tab)</span>
+                        Microsoft Learn docs ↗<span className="sr-only"> (opens in a new tab)</span>
                       </a>
                     </p>
                   )}

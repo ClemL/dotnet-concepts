@@ -21,6 +21,7 @@ export async function highlightQuestions(questions: readonly Question[]): Promis
     result[q.id] = h.codeToHtml(q.code, {
       lang: "csharp",
       themes: { light: "github-light-default", dark: "github-dark-default" },
+      // Background comes from the theme tokens (--code-bg), so only token colors are used.
     });
   }
   return result;

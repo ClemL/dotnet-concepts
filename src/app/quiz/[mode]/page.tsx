@@ -29,7 +29,7 @@ export default async function QuizPage({ params }: Props) {
   const highlighted = await highlightQuestions(pool);
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-6 sm:py-10">
+    <main>
       <QuizLoader mode={mode} questions={pool} highlighted={highlighted} />
     </main>
   );

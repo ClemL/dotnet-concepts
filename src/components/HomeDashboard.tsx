@@ -4,35 +4,33 @@ import Link from "next/link";
 import { CONCEPTS, questions, type ConceptInfo } from "@/data/questions";
 import { CORE_CONCEPTS, selectMissed, toScore } from "@/lib/quiz";
 import { clearProgress } from "@/lib/storage";
-import { buttonPrimary, buttonSecondary } from "./ui";
+import { useState } from "react";
+import { buttonPrimary, buttonSecondary, scoreTone } from "./ui";
 import { useProgress } from "./useProgress";
 
 const coreCount = questions.filter((q) => CORE_CONCEPTS.includes(q.concept)).length;
 
 export function HomeDashboard() {
   const { progress, hydrated } = useProgress();
+  const [confirmingReset, setConfirmingReset] = useState(false);
   const missedCount = selectMissed(questions, progress).length;
   const answeredCount = Object.keys(progress.questionResults).length;
 
   return (
     <>
-      <nav aria-label="Quiz modes" className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+      <nav aria-label="Quiz modes" className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
         <Link href="/quiz/core" className={buttonPrimary}>
-          Core 12 quiz ({coreCount})
+          Run core 12 ({coreCount})
         </Link>
         <Link href="/quiz/all" className={buttonSecondary}>
-          Full quiz ({questions.length})
+          Run all ({questions.length})
         </Link>
         {hydrated && missedCount > 0 ? (
-          <Link href="/quiz/missed" className={buttonSecondary}>
+          <Link href="/quiz/missed" className={`${buttonSecondary} border-danger text-danger`}>
             Review missed ({missedCount})
           </Link>
         ) : (
-          <span
-            className={`${buttonSecondary} cursor-not-allowed opacity-60 hover:bg-surface`}
-            aria-disabled="true"
-            title="Answer some questions first"
-          >
+          <span className={`${buttonSecondary} cursor-not-allowed text-faint hover:bg-surface`} aria-disabled="true">
             Review missed (0)
           </span>
         )}
@@ -52,16 +50,29 @@ export function HomeDashboard() {
       />
 
       {hydrated && answeredCount > 0 && (
-        <div className="mt-10 border-t border-border pt-6">
-          <button
-            type="button"
-            className={buttonSecondary}
-            onClick={() => {
-              if (window.confirm("Clear all saved scores and missed-question history?")) clearProgress();
-            }}
-          >
-            Reset progress
-          </button>
+        <div className="mt-10 flex flex-wrap items-center gap-3 border-t border-border pt-6">
+          {confirmingReset ? (
+            <>
+              <span className="text-sm text-muted">Clear all scores and missed-question history?</span>
+              <button
+                type="button"
+                className={`${buttonSecondary} border-danger text-danger`}
+                onClick={() => {
+                  clearProgress();
+                  setConfirmingReset(false);
+                }}
+              >
+                Clear progress
+              </button>
+              <button type="button" className={buttonSecondary} onClick={() => setConfirmingReset(false)}>
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button type="button" className={buttonSecondary} onClick={() => setConfirmingReset(true)}>
+              Reset progress
+            </button>
+          )}
         </div>
       )}
     </>
@@ -82,31 +93,36 @@ function ConceptSection({
   const headingId = `${title.toLowerCase().replace(/\s+/g, "-")}-heading`;
   return (
     <section aria-labelledby={headingId} className="mt-10">
-      <h2 id={headingId} className="text-lg font-semibold">
-        {title}
+      <h2 id={headingId} className="eyebrow">
+        ## {title}
       </h2>
-      <ul className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <ul className="mt-3 grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-2">
         {concepts.map((c) => {
           const b = best[c.id];
-          const score = b ? toScore(b.correct, b.total) : null;
-          const n = CONCEPTS.findIndex((x) => x.id === c.id) + 1;
+          const score = hydrated && b ? toScore(b.correct, b.total) : null;
           return (
-            <li key={c.id}>
+            <li key={c.id} className="bg-surface">
               <Link
                 href={`/quiz/${c.id}`}
-                className="flex h-full flex-col gap-2 rounded-xl border border-border bg-surface p-4 hover:border-accent"
-                aria-describedby={`${c.id}-best`}
+                className="flex h-full items-start gap-3 px-4 py-3 hover:bg-surface-2"
               >
-                <span className="text-sm text-muted">{String(n).padStart(2, "0")}</span>
-                <span className="font-semibold">{c.title}</span>
-                <span className="text-sm text-muted">{c.summary}</span>
-                <span id={`${c.id}-best`} className="mt-auto pt-2 text-sm">
+                <span className="min-w-0 flex-1">
+                  <span className="block font-mono text-[0.8125rem] text-accent">{c.id}.cs</span>
+                  <span className="mt-0.5 block font-medium">{c.title}</span>
+                  <span className="mt-0.5 block text-sm text-muted">{c.summary}</span>
+                </span>
+                <span className="shrink-0 pt-0.5 text-right font-mono text-sm tabular-nums">
                   {!hydrated ? (
-                    <span className="text-muted">Best: …</span>
+                    <span className="text-faint">…</span>
                   ) : score ? (
-                    <BestBadge percent={score.percent} correct={score.correct} total={score.total} />
+                    <>
+                      <span className={scoreTone(score.percent)}>{score.percent}%</span>
+                      <span className="block text-xs text-muted">
+                        best {score.correct}/{score.total}
+                      </span>
+                    </>
                   ) : (
-                    <span className="text-muted">Not attempted</span>
+                    <span className="text-faint">—</span>
                   )}
                 </span>
               </Link>
@@ -115,15 +131,5 @@ function ConceptSection({
         })}
       </ul>
     </section>
-  );
-}
-
-function BestBadge({ percent, correct, total }: { percent: number; correct: number; total: number }) {
-  const tone =
-    percent >= 80 ? "bg-success-bg text-success" : percent >= 50 ? "bg-surface-2 text-fg" : "bg-danger-bg text-danger";
-  return (
-    <span className={`inline-block rounded-full px-2.5 py-0.5 font-medium ${tone}`}>
-      Best: {percent}% ({correct}/{total})
-    </span>
   );
 }
