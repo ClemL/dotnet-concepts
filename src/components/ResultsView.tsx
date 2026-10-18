@@ -76,7 +76,9 @@ export default function ResultsView({ highlighted }: { highlighted: Record<strin
               key={concept}
               className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 border-b border-border bg-surface px-4 py-2.5 last:border-b-0 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_auto]"
             >
-              <span className="truncate text-fg">{concept}.cs</span>
+              <Link href={`/concepts/${concept}`} className="truncate text-fg underline-offset-2 hover:text-accent hover:underline">
+                {concept}.cs<span className="sr-only"> study guide</span>
+              </Link>
               <span className="col-span-2 row-start-2 h-1.5 overflow-hidden rounded bg-border sm:col-span-1 sm:row-start-1 sm:col-start-2" aria-hidden="true">
                 <span
                   className={`block h-full ${score.percent >= 80 ? "bg-success" : score.percent < 50 ? "bg-danger" : "bg-accent"}`}
@@ -127,13 +129,16 @@ export default function ResultsView({ highlighted }: { highlighted: Record<strin
                   <p className="mt-3 leading-relaxed">
                     <RichText text={q.explanation} />
                   </p>
-                  {q.docsUrl && (
-                    <p className="mt-2">
+                  <p className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
+                    <Link href={`/concepts/${q.concept}`} className={textLink}>
+                      Study guide: {conceptTitle(q.concept)}
+                    </Link>
+                    {q.docsUrl && (
                       <a href={q.docsUrl} target="_blank" rel="noopener noreferrer" className={textLink}>
                         Microsoft Learn docs ↗<span className="sr-only"> (opens in a new tab)</span>
                       </a>
-                    </p>
-                  )}
+                    )}
+                  </p>
                 </li>
               );
             })}

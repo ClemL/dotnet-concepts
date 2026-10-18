@@ -12,17 +12,24 @@ function getHighlighter(): Promise<Highlighter> {
   return highlighter;
 }
 
+/**
+ * Highlighted HTML for one C# snippet. Light colors are inline and dark colors are in --shiki-dark
+ * variables (switched in globals.css); the background comes from the --code-bg theme token.
+ */
+export async function highlightCsharp(code: string): Promise<string> {
+  const h = await getHighlighter();
+  return h.codeToHtml(code, {
+    lang: "csharp",
+    themes: { light: "github-light-default", dark: "github-dark-default" },
+  });
+}
+
 /** Map of question id → highlighted HTML, for questions that have a code snippet. */
 export async function highlightQuestions(questions: readonly Question[]): Promise<Record<string, string>> {
-  const h = await getHighlighter();
   const result: Record<string, string> = {};
   for (const q of questions) {
     if (!q.code) continue;
-    result[q.id] = h.codeToHtml(q.code, {
-      lang: "csharp",
-      themes: { light: "github-light-default", dark: "github-dark-default" },
-      // Background comes from the theme tokens (--code-bg), so only token colors are used.
-    });
+    result[q.id] = await highlightCsharp(q.code);
   }
   return result;
 }

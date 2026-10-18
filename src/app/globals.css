@@ -86,6 +86,14 @@ body {
   outline: none;
 }
 
+/* Monospace text and code show characters exactly as typed (no ligatures for ==, >=, =>). */
+.font-mono,
+code,
+kbd,
+pre {
+  font-variant-ligatures: none;
+}
+
 /* Section labels in the IDE style: "// output", "explorer". */
 .eyebrow {
   font-family: var(--font-mono);

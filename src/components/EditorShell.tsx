@@ -19,6 +19,7 @@ function breadcrumb(pathname: string): string {
     if (mode === "missed") return "quiz / missed.cs";
     return `quiz / ${mode}.cs`;
   }
+  if (pathname.startsWith("/concepts/")) return `concepts / ${pathname.slice("/concepts/".length)}.md`;
   if (pathname.startsWith("/results")) return "results.log";
   return "README.md";
 }
@@ -29,6 +30,8 @@ export function EditorShell({ children }: { children: ReactNode }) {
   const { progress, hydrated } = useProgress();
   const missedCount = hydrated ? selectMissed(questions, progress).length : 0;
   const activeMode = pathname.startsWith("/quiz/") ? pathname.slice("/quiz/".length) : null;
+  /** The concept being quizzed or studied, highlighted in the explorer. */
+  const activeConcept = pathname.startsWith("/concepts/") ? pathname.slice("/concepts/".length) : activeMode;
 
   const modeLink = (href: string, label: string, mode: string, tone = "") => (
     <Link
@@ -78,14 +81,14 @@ export function EditorShell({ children }: { children: ReactNode }) {
             <ExplorerGroup
               label={`explorer · core`}
               concepts={CONCEPTS.filter((c) => c.core)}
-              activeMode={activeMode}
+              activeMode={activeConcept}
               best={progress.bestByConcept}
               hydrated={hydrated}
             />
             <ExplorerGroup
               label={`explorer · extra`}
               concepts={CONCEPTS.filter((c) => !c.core)}
-              activeMode={activeMode}
+              activeMode={activeConcept}
               best={progress.bestByConcept}
               hydrated={hydrated}
             />

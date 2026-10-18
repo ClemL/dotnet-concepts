@@ -8,7 +8,8 @@ export default function Home() {
       <h1 className="mt-2 text-2xl font-semibold sm:text-3xl">C#/.NET Concepts Quiz</h1>
       <p className="mt-3 max-w-2xl text-muted">
         {questions.length} multiple-choice questions across {CONCEPTS.length} concepts: code reading, judgment calls
-        and fundamentals. Questions and options are reshuffled every run. Progress is saved in this browser only.
+        and fundamentals. Every concept has a study guide with why it matters, usage, an ELI5, related topics and
+        interview questions. Questions and options are reshuffled every run. Progress is saved in this browser only.
       </p>
       <HomeDashboard />
     </main>

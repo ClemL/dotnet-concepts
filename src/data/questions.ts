@@ -28,6 +28,10 @@ export const CONCEPT_IDS = [
   "collections",
   "architecture",
   "hosting-resilience",
+  "dependency-injection",
+  "configuration",
+  "data-access",
+  "money-dates",
 ] as const;
 
 export type Concept = (typeof CONCEPT_IDS)[number];
@@ -84,9 +88,13 @@ export const CONCEPTS: readonly ConceptInfo[] = [
   { id: "collections", title: "Collections", summary: "HashSet, Dictionary, read-only views, FrozenDictionary", core: false },
   { id: "architecture", title: "Architecture patterns", summary: "CQRS, Outbox, Decorator, Repository, Vertical Slice", core: false },
   { id: "hosting-resilience", title: "Hosting and resilience", summary: "BackgroundService, PeriodicTimer, Polly v8", core: false },
+  { id: "dependency-injection", title: "Dependency injection", summary: "Registration rules, TryAdd, forwarding, disposal ownership, validation", core: false },
+  { id: "configuration", title: "Configuration and Options", summary: "Source precedence, environment variables, ValidateOnStart, Key Vault", core: false },
+  { id: "data-access", title: "EF Core and Dapper on Azure SQL", summary: "Tracking, execution strategies, SQL injection, bulk loads, threading", core: false },
+  { id: "money-dates", title: "Money, rounding, and dates", summary: "decimal vs double, MidpointRounding, DateTimeOffset, DateOnly", core: false },
 ];
 
-const LEARN = "https://learn.microsoft.com/en-us";
+export const LEARN = "https://learn.microsoft.com/en-us";
 
 export const questions: Question[] = [
   // ───────────────────────────── 1. Naming ─────────────────────────────
@@ -2187,5 +2195,437 @@ await pipeline.ExecuteAsync(async ct => await CallApiAsync(ct));`,
     correctIndex: 0,
     explanation:
       "A request can time out after the server has already processed it, so blindly retrying a non-idempotent POST can charge a customer twice. Use an idempotency key, or restrict retries to safe or idempotent methods. A `TransactionScope` is tempting, but it cannot roll back work performed by a remote HTTP service.",
+  },
+
+  // ───────────────────────────── 23. Dependency injection ─────────────────────────────
+  {
+    id: "dependency-injection-1",
+    concept: "dependency-injection",
+    kind: "code",
+    difficulty: 2,
+    prompt: "What does this print?",
+    code: `using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+
+var services = new ServiceCollection();
+services.AddSingleton<INotifier, SmsNotifier>();
+services.TryAddSingleton<INotifier, EmailNotifier>();
+services.AddSingleton<INotifier, PushNotifier>();
+
+using var provider = services.BuildServiceProvider();
+Console.WriteLine(provider.GetRequiredService<INotifier>().GetType().Name);
+Console.WriteLine(provider.GetServices<INotifier>().Count());
+
+public interface INotifier;
+public class SmsNotifier : INotifier;
+public class EmailNotifier : INotifier;
+public class PushNotifier : INotifier;`,
+    options: ["`PushNotifier`, then 2", "`PushNotifier`, then 3", "`SmsNotifier`, then 2", "`EmailNotifier`, then 3"],
+    correctIndex: 0,
+    explanation:
+      "`TryAddSingleton` registers a service only if that service type has no registration yet, so the `EmailNotifier` line is skipped, while `AddSingleton` always appends. Resolving a single `INotifier` returns the last registration (`PushNotifier`), and `GetServices` returns every registration in order (`SmsNotifier`, `PushNotifier`). 3 is tempting if you read `TryAdd` as \"add unless this exact implementation exists\", but that check is what `TryAddEnumerable` does.",
+    docsUrl: `${LEARN}/dotnet/core/extensions/dependency-injection`,
+  },
+  {
+    id: "dependency-injection-2",
+    concept: "dependency-injection",
+    kind: "code",
+    difficulty: 3,
+    prompt: "`ClaimStore` holds an in-memory cache and must exist exactly once. What does this print?",
+    code: `var services = new ServiceCollection();
+services.AddSingleton<IClaimReader, ClaimStore>();
+services.AddSingleton<IClaimWriter, ClaimStore>();
+
+using var provider = services.BuildServiceProvider();
+var reader = provider.GetRequiredService<IClaimReader>();
+var writer = provider.GetRequiredService<IClaimWriter>();
+Console.WriteLine(ReferenceEquals(reader, writer));
+
+public interface IClaimReader;
+public interface IClaimWriter;
+public class ClaimStore : IClaimReader, IClaimWriter;`,
+    options: [
+      "False: each registration gets its own singleton, so there are two `ClaimStore` instances with separate caches",
+      "True: the container creates one singleton per implementation type",
+      "True, but only because both services are resolved from the same provider",
+      "It throws, because one class cannot be registered for two service types",
+    ],
+    correctIndex: 0,
+    explanation:
+      "A singleton is one instance per registration (service descriptor), not per implementation type, so the two registrations produce two `ClaimStore` objects. To share one instance, register the concrete type once and forward each interface to it: `AddSingleton<ClaimStore>()`, then `AddSingleton<IClaimReader>(sp => sp.GetRequiredService<ClaimStore>())`, and the same for `IClaimWriter`. \"One singleton per implementation type\" is the tempting assumption, and it is how the resulting bug (two caches drifting apart) slips through review.",
+    docsUrl: `${LEARN}/dotnet/core/extensions/dependency-injection`,
+  },
+  {
+    id: "dependency-injection-3",
+    concept: "dependency-injection",
+    kind: "code",
+    difficulty: 2,
+    prompt: "What is printed when the provider is disposed?",
+    code: `var services = new ServiceCollection();
+var cache = new PriceCache();
+services.AddSingleton(cache);
+services.AddSingleton<AuditLog>();
+
+using (var provider = services.BuildServiceProvider())
+{
+    provider.GetRequiredService<PriceCache>();
+    provider.GetRequiredService<AuditLog>();
+}
+
+public class PriceCache : IDisposable
+{
+    public void Dispose() => Console.WriteLine("PriceCache disposed");
+}
+
+public class AuditLog : IDisposable
+{
+    public void Dispose() => Console.WriteLine("AuditLog disposed");
+}`,
+    options: [
+      "Only `AuditLog disposed`",
+      "Both lines, `AuditLog` first",
+      "Both lines, `PriceCache` first",
+      "Nothing: singletons are never disposed",
+    ],
+    correctIndex: 0,
+    explanation:
+      "The container disposes only the `IDisposable` services it created. It constructed `AuditLog`, so disposing the provider disposes it; `cache` was created by your code and registered as an existing instance, so disposing it remains your responsibility. Both lines are tempting because both services are singletons, but ownership, not lifetime, decides disposal.",
+    docsUrl: `${LEARN}/dotnet/core/extensions/dependency-injection-guidelines`,
+  },
+  {
+    id: "dependency-injection-4",
+    concept: "dependency-injection",
+    kind: "concept",
+    difficulty: 3,
+    prompt:
+      "A console app resolves a transient `ReportWriter : IDisposable` from the root `ServiceProvider` once per file, for 100,000 files, and disposes the provider only at exit. What happens?",
+    options: [
+      "Memory grows: the root provider keeps a reference to every disposable transient it creates so it can dispose them later, so none can be garbage-collected",
+      "Each `ReportWriter` is disposed automatically when the variable holding it goes out of scope",
+      "The container reuses one `ReportWriter`, because transients resolved from the root provider behave as singletons",
+      "The container throws after it has created a fixed number of transient instances",
+    ],
+    correctIndex: 0,
+    explanation:
+      "The container tracks every `IDisposable` it creates so it can dispose it when its scope ends, and for the root provider that scope is the whole application. Every `ReportWriter` therefore stays reachable until exit, which behaves like a memory leak. Create a scope per file with `CreateScope()` and dispose it, or let your own code create and dispose the writer. Automatic disposal at the end of a variable's scope is tempting, but C# disposes objects only in a `using` statement or declaration.",
+    docsUrl: `${LEARN}/dotnet/core/extensions/dependency-injection-guidelines`,
+  },
+  {
+    id: "dependency-injection-5",
+    concept: "dependency-injection",
+    kind: "scenario",
+    difficulty: 2,
+    prompt:
+      "In production, a missing service registration surfaces only when the first request that needs the service arrives. You want the app to fail at startup instead. What should you do?",
+    options: [
+      "Enable `ValidateOnBuild` and `ValidateScopes` with `builder.Host.UseDefaultServiceProvider`, so the container checks that every registration can be constructed when the host is built",
+      "Resolve services with `GetService` instead of `GetRequiredService`, so a missing service returns null instead of throwing",
+      "Register every service as a singleton, because singletons are created when the app starts",
+      "Mark constructor parameters with `[Required]` so the container validates them",
+    ],
+    correctIndex: 0,
+    explanation:
+      "`ValidateOnBuild` makes the container verify that each registered service's dependencies can be resolved, and `ValidateScopes` rejects scoped services captured by singletons. Both are on by default only in the Development environment, which is why the error appears in production first. The singleton option is tempting, but the container creates singletons lazily, on first resolution. Validation cannot see services that code resolves by hand from `IServiceProvider`, which is another reason to prefer constructor injection.",
+    docsUrl: `${LEARN}/dotnet/core/extensions/dependency-injection`,
+  },
+
+  // ───────────────────────────── 24. Configuration and Options ─────────────────────────────
+  {
+    id: "configuration-1",
+    concept: "configuration",
+    kind: "code",
+    difficulty: 2,
+    prompt: "The app runs with `ASPNETCORE_ENVIRONMENT=Production`. What does it print?",
+    code: `// appsettings.json             { "Batch": { "Size": 100 } }
+// appsettings.Production.json  { "Batch": { "Size": 500 } }
+// Environment variable         Batch__Size=250
+
+var builder = WebApplication.CreateBuilder(args);
+Console.WriteLine(builder.Configuration["Batch:Size"]);`,
+    options: ["250", "500", "100", "It throws, because `Batch:Size` is defined in more than one source"],
+    correctIndex: 0,
+    explanation:
+      "Configuration sources are layered, and a later source overrides earlier ones key by key. `WebApplication.CreateBuilder` adds `appsettings.json`, then `appsettings.{Environment}.json`, then user secrets (Development only), then environment variables, then command-line arguments, so the environment variable wins. 500 is tempting because the environment-specific file feels most specific, but files are loaded before environment variables. The double underscore in `Batch__Size` stands for the `:` separator.",
+    docsUrl: `${LEARN}/aspnet/core/fundamentals/configuration/`,
+  },
+  {
+    id: "configuration-2",
+    concept: "configuration",
+    kind: "code",
+    difficulty: 3,
+    prompt: "The app runs in the Production environment. What does it print?",
+    code: `// appsettings.json             { "Sftp": { "Hosts": [ "a", "b", "c" ] } }
+// appsettings.Production.json  { "Sftp": { "Hosts": [ "x" ] } }
+
+var builder = WebApplication.CreateBuilder(args);
+var hosts = builder.Configuration.GetSection("Sftp:Hosts").Get<string[]>();
+Console.WriteLine(string.Join(", ", hosts!));`,
+    options: ["x, b, c", "x", "a, b, c, x", "a, b, c"],
+    correctIndex: 0,
+    explanation:
+      "Configuration is flattened into keys before sources are merged, so the base array becomes `Sftp:Hosts:0`, `Sftp:Hosts:1`, and `Sftp:Hosts:2`. The production file supplies only `Sftp:Hosts:0`, which overrides the first element and leaves the other two in place. \"x\" is what most people expect, but configuration has no notion of replacing a whole array. Avoid defining the same array in more than one source, or use objects keyed by name instead of arrays.",
+    docsUrl: `${LEARN}/aspnet/core/fundamentals/configuration/`,
+  },
+  {
+    id: "configuration-3",
+    concept: "configuration",
+    kind: "code",
+    difficulty: 2,
+    prompt: "`Sftp:Host` is missing from configuration in production. When is the problem reported?",
+    code: `using System.ComponentModel.DataAnnotations;
+
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddOptions<SftpOptions>()
+    .BindConfiguration("Sftp")
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+var app = builder.Build();
+app.Run();
+
+public class SftpOptions
+{
+    [Required] public string Host { get; set; } = "";
+    [Range(1, 65535)] public int Port { get; set; } = 22;
+}`,
+    options: [
+      "At startup: the host throws an `OptionsValidationException` before it serves any request",
+      "The first time code reads `IOptions<SftpOptions>.Value`",
+      "Never: data annotations are validated only during MVC model binding",
+      "At build time, as a compiler error",
+    ],
+    correctIndex: 0,
+    explanation:
+      "`ValidateDataAnnotations` adds a validator that runs when the options instance is created, and `RequiredAttribute` rejects empty strings by default, so the `\"\"` default fails. `ValidateOnStart` forces that validation to run while the host starts, so a bad deployment fails immediately instead of on the first request that needs the settings. Without `ValidateOnStart`, the first-read option would be correct, which is why it is tempting.",
+    docsUrl: `${LEARN}/dotnet/core/extensions/options`,
+  },
+  {
+    id: "configuration-4",
+    concept: "configuration",
+    kind: "scenario",
+    difficulty: 2,
+    prompt:
+      "Your app loads Azure Key Vault secrets with `builder.Configuration.AddAzureKeyVault(vaultUri, new DefaultAzureCredential())` and the default secret manager. Which secret name overrides the `ConnectionStrings:ClaimsDb` configuration key?",
+    options: ["`ConnectionStrings--ClaimsDb`", "`ConnectionStrings__ClaimsDb`", "`ConnectionStrings:ClaimsDb`", "`ConnectionStrings.ClaimsDb`"],
+    correctIndex: 0,
+    explanation:
+      "Key Vault secret names allow only letters, digits, and dashes, so the configuration provider maps a double dash (`--`) to the `:` section separator. The double underscore is tempting because it is the convention for environment variables, but underscores are not valid in secret names. Because the Key Vault provider is added after the default sources, its values override them.",
+    docsUrl: `${LEARN}/aspnet/core/security/key-vault-configuration`,
+  },
+  {
+    id: "configuration-5",
+    concept: "configuration",
+    kind: "concept",
+    difficulty: 2,
+    prompt:
+      "The same code runs in Azure App Service with a managed identity and on a developer laptop signed in to the Azure CLI. What does `new DefaultAzureCredential()` do in each place?",
+    options: [
+      "It tries a chain of credential types in order and uses the first that succeeds: the managed identity in Azure, and the developer's Azure CLI or IDE sign-in locally",
+      "It reads a client secret from `appsettings.json` in both places",
+      "It works only in Azure; local development needs a SQL login and password",
+      "It opens an interactive browser sign-in on every call",
+    ],
+    correctIndex: 0,
+    explanation:
+      "`DefaultAzureCredential` walks a chain that includes environment-variable credentials, managed identity, and developer-tool credentials such as Visual Studio and the Azure CLI, so one code path works in both places without a stored secret. Interactive browser sign-in is excluded from the chain by default. Because probing the chain adds latency and can pick an unexpected credential, Microsoft recommends a specific credential such as `ManagedIdentityCredential` in production.",
+    docsUrl: `${LEARN}/dotnet/api/azure.identity.defaultazurecredential`,
+  },
+
+  // ───────────────────────────── 25. EF Core and Dapper on Azure SQL ─────────────────────────────
+  {
+    id: "data-access-1",
+    concept: "data-access",
+    kind: "code",
+    difficulty: 2,
+    prompt: "What does this print?",
+    code: `var claim = await db.Claims
+    .AsNoTracking()
+    .SingleAsync(c => c.Id == claimId);
+
+claim.Status = ClaimStatus.Reversed;
+var rows = await db.SaveChangesAsync();
+Console.WriteLine(rows);`,
+    options: [
+      "0",
+      "1",
+      "Nothing: it throws `InvalidOperationException` because no-tracking entities are read-only",
+      "1, but only if `Status` is marked `[ConcurrencyCheck]`",
+    ],
+    correctIndex: 0,
+    explanation:
+      "`AsNoTracking` returns entities that the change tracker does not know about, so `SaveChangesAsync` finds nothing to save and returns 0 without an error. The exception is tempting, but untracked entities are ordinary objects, not read-only ones; the change is simply lost. Use a tracking query for entities you will modify, or call `db.Update(claim)` or `ExecuteUpdateAsync` deliberately.",
+    docsUrl: `${LEARN}/ef/core/querying/tracking`,
+  },
+  {
+    id: "data-access-2",
+    concept: "data-access",
+    kind: "code",
+    difficulty: 3,
+    prompt: "The context is registered as shown. What happens when the handler code runs?",
+    code: `builder.Services.AddDbContext<ClaimsDb>(o =>
+    o.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure()));
+
+// Later, in a request handler:
+await using var tx = await db.Database.BeginTransactionAsync();
+db.Adjustments.Add(adjustment);
+await db.SaveChangesAsync();
+await tx.CommitAsync();`,
+    options: [
+      "`SaveChangesAsync` throws `InvalidOperationException`: the retrying execution strategy does not support a user-initiated transaction unless it runs inside `db.Database.CreateExecutionStrategy().ExecuteAsync(...)`",
+      "It works, and after a transient error EF Core retries only the failed `SaveChangesAsync` call",
+      "It works, and after a transient error EF Core retries the whole transaction automatically",
+      "It deadlocks, because `BeginTransactionAsync` holds a lock that `SaveChangesAsync` waits for",
+    ],
+    correctIndex: 0,
+    explanation:
+      "A retrying strategy can only replay a unit of work it controls, and it cannot replay the operations you already ran in your own transaction, so EF Core throws instead of retrying half a transaction. Wrap the whole block (begin, save, commit) in a delegate passed to `strategy.ExecuteAsync`, so the strategy can rerun all of it. Retrying only the failed call is tempting, but the failure may already have rolled back the transaction, so a partial retry could commit inconsistent data.",
+    docsUrl: `${LEARN}/ef/core/miscellaneous/connection-resiliency`,
+  },
+  {
+    id: "data-access-3",
+    concept: "data-access",
+    kind: "code",
+    difficulty: 2,
+    prompt: "`ndc` comes from a vendor-supplied file, and `conn.Query` is Dapper. Which queries are safe from SQL injection?",
+    code: `string ndc = fields[3];
+
+// 1
+db.Claims.FromSqlRaw($"SELECT * FROM Claims WHERE Ndc = '{ndc}'");
+// 2
+db.Claims.FromSql($"SELECT * FROM Claims WHERE Ndc = {ndc}");
+// 3
+conn.Query<Claim>($"SELECT * FROM Claims WHERE Ndc = '{ndc}'");
+// 4
+conn.Query<Claim>("SELECT * FROM Claims WHERE Ndc = @ndc", new { ndc });`,
+    options: ["2 and 4", "Only 4", "1, 2, and 4", "Only 2"],
+    correctIndex: 0,
+    explanation:
+      "`FromSql` takes a `FormattableString` and turns each interpolated value into a `DbParameter`, and Dapper sends the anonymous object's properties as parameters, so 2 and 4 are safe. Query 1 is the tempting one because it looks like query 2, but `FromSqlRaw` receives an already-built string, so the value is pasted into the SQL text. Query 3 has the same flaw: Dapper also receives a plain string and cannot parameterize it.",
+    docsUrl: `${LEARN}/ef/core/querying/sql-queries`,
+  },
+  {
+    id: "data-access-4",
+    concept: "data-access",
+    kind: "scenario",
+    difficulty: 2,
+    prompt:
+      "A nightly job must load 2 million rows from a vendor file into an Azure SQL staging table as quickly as possible. Which approach fits best?",
+    options: [
+      "`SqlBulkCopy`, streaming rows from an `IDataReader` into the staging table",
+      "`db.AddRange` with all 2 million entities, then a single `SaveChangesAsync`",
+      "Dapper's `conn.Execute(insertSql, rows)` with the list of rows, which sends them as one bulk statement",
+      "A loop that calls `ExecuteSqlRawAsync` with one `INSERT` per row inside a transaction",
+    ],
+    correctIndex: 0,
+    explanation:
+      "`SqlBulkCopy` uses SQL Server's bulk-load protocol and can stream rows without materializing them as objects, which makes it the standard tool for large loads. The Dapper option is tempting, but when the parameter is a list, Dapper executes the statement once per element, so it still runs 2 million individual inserts. `AddRange` batches its inserts, but the change tracker holds every entity in memory.",
+    docsUrl: `${LEARN}/dotnet/api/microsoft.data.sqlclient.sqlbulkcopy`,
+  },
+  {
+    id: "data-access-5",
+    concept: "data-access",
+    kind: "code",
+    difficulty: 2,
+    prompt: "`db` is a single `DbContext` instance. What is wrong with this code?",
+    code: `var claimsTask = db.Claims.CountAsync();
+var pharmaciesTask = db.Pharmacies.CountAsync();
+await Task.WhenAll(claimsTask, pharmaciesTask);`,
+    options: [
+      "A `DbContext` does not support concurrent operations, and EF Core typically throws `InvalidOperationException`; await each query in turn, or use separate contexts from `IDbContextFactory<T>`",
+      "Nothing: `Task.WhenAll` runs both queries in parallel on the context's connection, which is faster",
+      "It deadlocks, because both queries wait for the same connection forever",
+      "It compiles, but the second count always returns 0",
+    ],
+    correctIndex: 0,
+    explanation:
+      "A `DbContext` wraps one connection and one change tracker and is not thread-safe, so starting a second operation before the first completes is unsupported. EF Core detects most such cases and throws (\"A second operation was started on this context instance...\"), but detection is best-effort, so the absence of an exception does not make the code safe. For parallel work, create one context per operation with `IDbContextFactory<T>`.",
+    docsUrl: `${LEARN}/ef/core/dbcontext-configuration/`,
+  },
+
+  // ───────────────────────────── 26. Money, rounding, and dates ─────────────────────────────
+  {
+    id: "money-dates-1",
+    concept: "money-dates",
+    kind: "code",
+    difficulty: 1,
+    prompt: "What does this print?",
+    code: `Console.WriteLine(0.1 + 0.2 == 0.3);
+Console.WriteLine(0.1m + 0.2m == 0.3m);`,
+    options: ["False, then True", "True, then True", "False, then False", "True, then False"],
+    correctIndex: 0,
+    explanation:
+      "`double` is binary floating point, so 0.1 and 0.2 have no exact representation, and their sum is not the `double` closest to 0.3. `decimal` stores a base-10 integer with a scale, so these values are exact and the comparison is true. \"True, then True\" is what intuition says, which is exactly why currency belongs in `decimal`.",
+    docsUrl: `${LEARN}/dotnet/csharp/language-reference/builtin-types/floating-point-numeric-types`,
+  },
+  {
+    id: "money-dates-2",
+    concept: "money-dates",
+    kind: "code",
+    difficulty: 2,
+    prompt: "What does this print, one value per line?",
+    code: `Console.WriteLine(Math.Round(2.5m));
+Console.WriteLine(Math.Round(3.5m));
+Console.WriteLine(Math.Round(2.345m, 2));
+Console.WriteLine(Math.Round(2.5m, MidpointRounding.AwayFromZero));`,
+    options: ["2, 4, 2.34, 3", "3, 4, 2.35, 3", "2, 3, 2.34, 3", "3, 4, 2.35, 2"],
+    correctIndex: 0,
+    explanation:
+      "`Math.Round` defaults to `MidpointRounding.ToEven` (banker's rounding): a value exactly halfway rounds to the nearest even digit, so 2.5 becomes 2, 3.5 becomes 4, and 2.345 becomes 2.34. Only the explicit `AwayFromZero` call gives the schoolbook 3. This matters in reconciliation, because T-SQL `ROUND` and Excel's `ROUND` round halves away from zero, so the same figures rounded in C# can differ by a cent.",
+    docsUrl: `${LEARN}/dotnet/api/system.math.round`,
+  },
+  {
+    id: "money-dates-3",
+    concept: "money-dates",
+    kind: "code",
+    difficulty: 2,
+    prompt: "What does this print?",
+    code: `var a = new DateTime(2026, 1, 15, 12, 0, 0, DateTimeKind.Utc);
+var b = new DateTime(2026, 1, 15, 12, 0, 0, DateTimeKind.Local);
+Console.WriteLine(a == b);
+
+var c = new DateTimeOffset(2026, 1, 15, 12, 0, 0, TimeSpan.Zero);
+var d = new DateTimeOffset(2026, 1, 15, 7, 0, 0, TimeSpan.FromHours(-5));
+Console.WriteLine(c == d);`,
+    options: ["True, then True", "False, then True", "True, then False", "False, then False"],
+    correctIndex: 0,
+    explanation:
+      "`DateTime` equality compares only `Ticks` and ignores `Kind`, so 12:00 UTC equals 12:00 local time even on a machine where they are different instants. `DateTimeOffset` equality compares instants, and 7:00 at UTC-5 is 12:00 UTC, so the second line is also true. \"False, then True\" is the tempting answer; the trap is the first line, where `DateTime` silently treats values from different clocks as equal.",
+    docsUrl: `${LEARN}/dotnet/standard/datetime/choosing-between-datetime`,
+  },
+  {
+    id: "money-dates-4",
+    concept: "money-dates",
+    kind: "scenario",
+    difficulty: 2,
+    prompt:
+      "A claims table has `FillDate`, the calendar date a prescription was filled (SQL `date`), and `IngestedAt`, the moment your pipeline loaded the row. Which .NET types fit best?",
+    options: [
+      "`DateOnly` for `FillDate`; `DateTimeOffset` (or a UTC `DateTime`) for `IngestedAt`",
+      "`DateTimeOffset` for both, storing `FillDate` as midnight UTC",
+      "`DateTime` with `DateTimeKind.Local` for both",
+      "A `yyyy-MM-dd` string for `FillDate` and a `long` tick count for `IngestedAt`",
+    ],
+    correctIndex: 0,
+    explanation:
+      "A fill date is a calendar date with no time or time zone, which is what `DateOnly` (added in .NET 6) represents; an ingestion timestamp is an instant, so it needs an offset or a strict UTC convention. Midnight UTC is the tempting shortcut, but converted to US local time it becomes the previous evening, so reports grouped by local date move rows to the wrong day. Local `DateTime` values depend on the server's time zone, which often differs between a laptop and Azure.",
+    docsUrl: `${LEARN}/dotnet/standard/datetime/how-to-use-dateonly-timeonly`,
+  },
+  {
+    id: "money-dates-5",
+    concept: "money-dates",
+    kind: "concept",
+    difficulty: 2,
+    prompt:
+      "An EF Core entity has `public decimal UnitCost { get; set; }` with no precision configured, and migrations create the SQL Server column. Vendor files supply unit costs such as 0.012345. What is the risk?",
+    options: [
+      "The column defaults to `decimal(18,2)`, so values with more than two decimal places lose precision when saved; configure it with `[Precision(18, 6)]` or `HasPrecision(18, 6)`",
+      "None: SQL Server `decimal` columns store every digit a .NET `decimal` can hold",
+      "EF Core maps `decimal` to `float`, which introduces binary rounding errors",
+      "Migrations fail until a precision is specified",
+    ],
+    correctIndex: 0,
+    explanation:
+      "When no store type is configured, the SQL Server provider maps `decimal` to `decimal(18,2)` and logs a warning, so 0.012345 is stored as 0.01. \"None\" is tempting because a .NET `decimal` holds 28 to 29 significant digits, but the column definition, not the CLR type, decides what is stored. Set precision and scale explicitly on every money and rate column, with a scale that matches the source data.",
+    docsUrl: `${LEARN}/ef/core/modeling/entity-properties`,
   },
 ];

@@ -101,17 +101,14 @@ function ConceptSection({
           const b = best[c.id];
           const score = hydrated && b ? toScore(b.correct, b.total) : null;
           return (
-            <li key={c.id} className="bg-surface">
-              <Link
-                href={`/quiz/${c.id}`}
-                className="flex h-full items-start gap-3 px-4 py-3 hover:bg-surface-2"
-              >
+            <li key={c.id} className="flex flex-col gap-3 bg-surface px-4 py-3">
+              <div className="flex items-start gap-3">
                 <span className="min-w-0 flex-1">
                   <span className="block font-mono text-[0.8125rem] text-accent">{c.id}.cs</span>
                   <span className="mt-0.5 block font-medium">{c.title}</span>
                   <span className="mt-0.5 block text-sm text-muted">{c.summary}</span>
                 </span>
-                <span className="shrink-0 pt-0.5 text-right font-mono text-sm tabular-nums">
+                <span id={`${c.id}-best`} className="shrink-0 pt-0.5 text-right font-mono text-sm tabular-nums">
                   {!hydrated ? (
                     <span className="text-faint">…</span>
                   ) : score ? (
@@ -122,10 +119,27 @@ function ConceptSection({
                       </span>
                     </>
                   ) : (
-                    <span className="text-faint">—</span>
+                    <span className="text-faint">
+                      —<span className="sr-only"> not attempted</span>
+                    </span>
                   )}
                 </span>
-              </Link>
+              </div>
+              <div className="mt-auto flex gap-2 font-mono text-[0.8125rem]">
+                <Link
+                  href={`/quiz/${c.id}`}
+                  aria-describedby={`${c.id}-best`}
+                  className="inline-flex min-h-10 items-center rounded-md border border-border-strong px-3 hover:border-accent hover:text-accent"
+                >
+                  quiz<span className="sr-only"> on {c.title}</span>
+                </Link>
+                <Link
+                  href={`/concepts/${c.id}`}
+                  className="inline-flex min-h-10 items-center rounded-md border border-border px-3 text-muted hover:border-border-strong hover:text-fg"
+                >
+                  study<span className="sr-only"> {c.title}</span>
+                </Link>
+              </div>
             </li>
           );
         })}
