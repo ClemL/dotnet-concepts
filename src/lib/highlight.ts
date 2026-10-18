@@ -6,18 +6,18 @@ let highlighter: Promise<Highlighter> | undefined;
 
 function getHighlighter(): Promise<Highlighter> {
   highlighter ??= createHighlighter({
-    themes: ["github-light-default", "github-dark-default"],
+    themes: ["github-dark-default"],
     langs: ["csharp"],
   });
   return highlighter;
 }
 
-/** Highlighted HTML for one C# snippet, with light and dark theme colors. */
+/** Highlighted HTML for one C# snippet, in the dark theme the app uses. */
 export async function highlightCsharp(code: string): Promise<string> {
   const h = await getHighlighter();
   return h.codeToHtml(code, {
     lang: "csharp",
-    themes: { light: "github-light-default", dark: "github-dark-default" },
+    theme: "github-dark-default",
   });
 }
 

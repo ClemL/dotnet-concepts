@@ -2,7 +2,7 @@
 
 A multiple-choice quiz with 130 questions across 26 C#/.NET concepts. The first 12 concepts form the core syllabus (60 questions); the other 14 are additional concepts (70 questions). Every concept also has a study page covering why it matters, how it is used, an ELI5 explanation, related topics, and common interview questions. It has no backend, database, or authentication. The questions and study guides live in typed data files, and progress is stored in the browser's `localStorage`.
 
-**Stack:** Next.js 16 (App Router, static generation) · TypeScript (strict) · Tailwind CSS v4 · shiki (server-side syntax highlighting) · Vitest · pnpm
+**Stack:** Next.js 16 (App Router, static generation) · TypeScript (strict) · Tailwind CSS v4 · shiki (server-side syntax highlighting) · `next/font` (JetBrains Mono, IBM Plex Sans) · Vitest · pnpm
 
 ## Concepts
 
@@ -23,7 +23,7 @@ A multiple-choice quiz with 130 questions across 26 C#/.NET concepts. The first 
 | | | 25 | EF Core and Dapper on Azure SQL (tracking, execution strategies, SQL injection, bulk loads) |
 | | | 26 | Money, rounding, and dates (decimal vs double, MidpointRounding, DateTimeOffset, DateOnly) |
 
-The home page offers **Core 12 quiz (60)**, **Full quiz (130)**, **Review missed**, and, for each concept, a **Study** page and a 5-question **Quiz**.
+The home page uses a terminal-style layout: `$ quiz --core` (60), `$ quiz --all` (130), and `$ quiz --missed` buttons, a progress strip (concepts attempted, questions answered, questions missed), and a list of concepts with a best-score bar and **study** and **quiz** links for each. The whole app uses a dark, Terminal-style theme: JetBrains Mono for headings, buttons, and code (with ligatures turned off, so `==` and `>=` display as typed) and IBM Plex Sans for body text.
 
 ### Study pages
 
@@ -99,13 +99,13 @@ src/
     concepts/[id]/page.tsx Study page per concept: tabs for why, usage, ELI5, related topics, interview questions
     quiz/[mode]/page.tsx   Quiz route (mode = concept id | core | all | missed); highlights code server-side
     results/page.tsx       Results of the most recent attempt
-    globals.css            Theme tokens (light/dark via prefers-color-scheme), shiki dual-theme CSS
+    globals.css            Theme tokens (Terminal theme, dark only), code-block and focus styles
   components/              HomeDashboard, QuizRunner, ResultsView, ConceptTabs, GuidePanels, CodeBlock, RichText, loaders
   data/questions.ts        Concept union type, concept metadata, typed Question[] data
   data/guides.ts           Study guide per concept (Record<Concept, ConceptGuide>)
   lib/quiz.ts              Pure logic: seeded shuffle, prepare/answer, scoring, aggregation, progress updates
   lib/storage.ts           Guarded localStorage wrapper (key: quiz-progress-v1) with in-memory fallback
-  lib/highlight.ts         shiki highlighter (server-only)
+  lib/highlight.ts         shiki highlighter, github-dark-default theme (server-only)
 tests/                     Vitest suites
 docs/REVIEW.md             Summary of the question review pass
 ```
